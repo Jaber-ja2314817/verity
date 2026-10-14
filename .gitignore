@@ -1,0 +1,11 @@
+.env
+data/
+node_modules/
+dist/
+__pycache__/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.DS_Store
+eval/results/*.json
+!eval/results/latest.json
