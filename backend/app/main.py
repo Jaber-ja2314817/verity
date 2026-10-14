@@ -37,12 +37,26 @@ PLACEHOLDER_HTML = (
 RunCheck = Callable[[str, CheckRequest, Deps], Awaitable[None]]
 
 
+APP_DIR = Path(__file__).resolve().parent
+
+
+def _first_existing(*candidates: Path) -> Path:
+    return next((c for c in candidates if c.exists()), candidates[-1])
+
+
 def _static_dir() -> Path:
-    return Path(os.environ.get("STATIC_DIR", REPO_DIR / "frontend" / "dist"))
+    """STATIC_DIR env, else app/static (Docker image), else frontend/dist (local dev)."""
+    if env := os.environ.get("STATIC_DIR"):
+        return Path(env)
+    return _first_existing(APP_DIR / "static", REPO_DIR / "frontend" / "dist")
 
 
 def _benchmark_path() -> Path:
-    return Path(os.environ.get("BENCHMARK_PATH", REPO_DIR / "eval" / "results" / "latest.json"))
+    """BENCHMARK_PATH env, else /app/eval/... (Docker image), else repo eval/... (local dev)."""
+    if env := os.environ.get("BENCHMARK_PATH"):
+        return Path(env)
+    rel = Path("eval") / "results" / "latest.json"
+    return _first_existing(BACKEND_DIR / rel, REPO_DIR / rel)
 
 
 def _sse(event: dict) -> str:

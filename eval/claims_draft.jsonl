@@ -1,0 +1,40 @@
+{"id": "c01", "claim": "Light from the Sun takes about 8 minutes to reach Earth.", "label": "TRUE", "evidence_url": "https://en.wikipedia.org/wiki/Sunlight"}
+{"id": "c02", "claim": "The human heart has four chambers.", "label": "TRUE", "evidence_url": "https://en.wikipedia.org/wiki/Heart"}
+{"id": "c03", "claim": "The Pacific Ocean is the largest ocean on Earth.", "label": "TRUE", "evidence_url": "https://en.wikipedia.org/wiki/Pacific_Ocean"}
+{"id": "c04", "claim": "Mount Kilimanjaro is the highest mountain in Africa.", "label": "TRUE", "evidence_url": "https://en.wikipedia.org/wiki/Mount_Kilimanjaro"}
+{"id": "c05", "claim": "The Berlin Wall fell in 1989.", "label": "TRUE", "evidence_url": "https://en.wikipedia.org/wiki/Berlin_Wall"}
+{"id": "c06", "claim": "Penicillin was discovered by Alexander Fleming in 1928.", "label": "TRUE", "evidence_url": "https://en.wikipedia.org/wiki/Penicillin"}
+{"id": "c07", "claim": "Diamonds are made of carbon.", "label": "TRUE", "evidence_url": "https://en.wikipedia.org/wiki/Diamond"}
+{"id": "c08", "claim": "The first iPhone was released in 2007.", "label": "TRUE", "evidence_url": "https://en.wikipedia.org/wiki/IPhone_(1st_generation)"}
+{"id": "c09", "claim": "Canberra is the capital city of Australia.", "label": "TRUE", "evidence_url": "https://en.wikipedia.org/wiki/Canberra"}
+{"id": "c10", "claim": "Antibiotics do not work against viral infections such as the common cold.", "label": "TRUE", "evidence_url": "https://en.wikipedia.org/wiki/Antibiotic"}
+{"id": "c11", "claim": "Jupiter is the largest planet in the Solar System.", "label": "TRUE", "evidence_url": "https://en.wikipedia.org/wiki/Jupiter"}
+{"id": "c12", "claim": "Apollo 11 landed the first humans on the Moon in July 1969.", "label": "TRUE", "evidence_url": "https://en.wikipedia.org/wiki/Apollo_11"}
+{"id": "c13", "claim": "The Amazon River flows into the Atlantic Ocean.", "label": "TRUE", "evidence_url": "https://en.wikipedia.org/wiki/Amazon_River"}
+{"id": "c14", "claim": "Humans normally have 23 pairs of chromosomes.", "label": "TRUE", "evidence_url": "https://medlineplus.gov/genetics/understanding/basics/howmanychromosomes/"}
+{"id": "c15", "claim": "The World Wide Web was invented by Tim Berners-Lee.", "label": "TRUE", "evidence_url": "https://en.wikipedia.org/wiki/Tim_Berners-Lee"}
+{"id": "c16", "claim": "A severe lack of vitamin C causes scurvy.", "label": "TRUE", "evidence_url": "https://en.wikipedia.org/wiki/Scurvy"}
+{"id": "c17", "claim": "The Great Pyramid of Giza was built during Egypt's Fourth Dynasty.", "label": "TRUE", "evidence_url": "https://en.wikipedia.org/wiki/Great_Pyramid_of_Giza"}
+{"id": "c18", "claim": "Sound cannot travel through a vacuum.", "label": "TRUE", "evidence_url": "https://en.wikipedia.org/wiki/Sound"}
+{"id": "c19", "claim": "The Sahara is the largest hot desert in the world.", "label": "TRUE", "evidence_url": "https://en.wikipedia.org/wiki/Sahara"}
+{"id": "c20", "claim": "The Python programming language was first released in 1991.", "label": "TRUE", "evidence_url": "https://en.wikipedia.org/wiki/Python_(programming_language)"}
+{"id": "c21", "claim": "Vaccines cause autism.", "label": "FALSE", "evidence_url": "https://en.wikipedia.org/wiki/Vaccines_and_autism"}
+{"id": "c22", "claim": "The Moon produces its own light.", "label": "FALSE", "evidence_url": "https://en.wikipedia.org/wiki/Moonlight"}
+{"id": "c23", "claim": "Sydney is the capital city of Australia.", "label": "FALSE", "evidence_url": "https://en.wikipedia.org/wiki/Canberra"}
+{"id": "c24", "claim": "Thomas Edison invented the telephone.", "label": "FALSE", "evidence_url": "https://en.wikipedia.org/wiki/Invention_of_the_telephone"}
+{"id": "c25", "claim": "The Eiffel Tower was completed in 1925.", "label": "FALSE", "evidence_url": "https://en.wikipedia.org/wiki/Eiffel_Tower"}
+{"id": "c26", "claim": "The Nile River flows into the Red Sea.", "label": "FALSE", "evidence_url": "https://en.wikipedia.org/wiki/Nile"}
+{"id": "c27", "claim": "Antibiotics are an effective treatment for the flu virus.", "label": "FALSE", "evidence_url": "https://en.wikipedia.org/wiki/Influenza"}
+{"id": "c28", "claim": "The Titanic sank in 1920.", "label": "FALSE", "evidence_url": "https://en.wikipedia.org/wiki/Titanic"}
+{"id": "c29", "claim": "Venus is the closest planet to the Sun.", "label": "FALSE", "evidence_url": "https://en.wikipedia.org/wiki/Mercury_(planet)"}
+{"id": "c30", "claim": "Microsoft was founded by Steve Jobs.", "label": "FALSE", "evidence_url": "https://en.wikipedia.org/wiki/Microsoft"}
+{"id": "c31", "claim": "Blood inside human veins is blue.", "label": "FALSE", "evidence_url": "https://en.wikipedia.org/wiki/Blood"}
+{"id": "c32", "claim": "Mount Everest is in the Andes mountain range.", "label": "FALSE", "evidence_url": "https://en.wikipedia.org/wiki/Mount_Everest"}
+{"id": "c33", "claim": "Cracking your knuckles causes arthritis.", "label": "FALSE", "evidence_url": "https://en.wikipedia.org/wiki/Cracking_joints"}
+{"id": "c34", "claim": "Albert Einstein failed mathematics at school.", "label": "FALSE", "evidence_url": "https://en.wikipedia.org/wiki/Albert_Einstein"}
+{"id": "c35", "claim": "The Great Fire of London happened in 1766.", "label": "FALSE", "evidence_url": "https://en.wikipedia.org/wiki/Great_Fire_of_London"}
+{"id": "c36", "claim": "Diamonds form from compressed coal.", "label": "FALSE", "evidence_url": "https://en.wikipedia.org/wiki/Diamond"}
+{"id": "c37", "claim": "Glass is a slow-flowing liquid, which is why old windows are thicker at the bottom.", "label": "FALSE", "evidence_url": "https://en.wikipedia.org/wiki/Glass"}
+{"id": "c38", "claim": "The Sun orbits the Earth.", "label": "FALSE", "evidence_url": "https://en.wikipedia.org/wiki/Heliocentrism"}
+{"id": "c39", "claim": "Viking warriors wore horned helmets in battle.", "label": "FALSE", "evidence_url": "https://en.wikipedia.org/wiki/Horned_helmet"}
+{"id": "c40", "claim": "Bats are blind.", "label": "FALSE", "evidence_url": "https://en.wikipedia.org/wiki/Bat"}
