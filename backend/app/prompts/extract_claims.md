@@ -1,0 +1,15 @@
+Task: Split the input into atomic factual claims that can be checked against public sources.
+
+Rules:
+- A claim must be a factual statement about the world (numbers, events, dates, scientific facts,
+  quotes, rankings). Opinions, predictions, questions and jokes are NOT checkworthy.
+- Rewrite each claim so it stands alone: replace pronouns with names, include dates/places
+  mentioned in the input. Keep the original meaning. Max 30 words.
+- Merge duplicates. Order by importance (most central claim first).
+- Return at most {max_claims_plus_two} claims. Set checkworthy=false with a short reason for
+  ones that can't be checked.
+- language = ISO 639-1 code of the input.
+
+<input>
+{text}
+</input>

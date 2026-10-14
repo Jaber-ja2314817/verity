@@ -1,0 +1,32 @@
+[
+  {
+    "title": "Great Wall from space",
+    "type": "text",
+    "value": "The Great Wall of China is visible from space with the naked eye."
+  },
+  {
+    "title": "Boiling point of water",
+    "type": "text",
+    "value": "Water boils at 100 °C at sea level."
+  },
+  {
+    "title": "The 10% brain myth",
+    "type": "text",
+    "value": "Humans only use 10% of their brains."
+  },
+  {
+    "title": "Tallest mountain",
+    "type": "text",
+    "value": "Mount Everest is the tallest mountain on Earth measured from sea level."
+  },
+  {
+    "title": "Goldfish memory",
+    "type": "text",
+    "value": "Goldfish have a three-second memory."
+  },
+  {
+    "title": "Mixed paragraph",
+    "type": "text",
+    "value": "The Eiffel Tower in Paris was completed in 1889 for the World's Fair. Lightning never strikes the same place twice. Eating carrots will give you excellent night vision."
+  }
+]

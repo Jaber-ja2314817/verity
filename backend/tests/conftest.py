@@ -36,3 +36,31 @@ def fake_llm() -> FakeLLM:
 @pytest.fixture
 def trace() -> Trace:
     return Trace()
+
+
+class FakeSearch:
+    """Stands in for app.search.Search. Fixed results per query, fixed page for extract_url."""
+
+    def __init__(self, results: dict | None = None, page: str = "", default: list | None = None):
+        self.results: dict[str, list[dict]] = results or {}
+        self.default: list[dict] = default or []  # returned for queries not in results
+        self.page = page
+        self.queries: list[str] = []
+        self.extracted: list[str] = []
+
+    async def search_web(self, query: str) -> list[dict]:
+        self.queries.append(query)
+        return list(self.results.get(query, self.default))
+
+    async def extract_url(self, url: str) -> str:
+        self.extracted.append(url)
+        return self.page
+
+
+def raw_result(url: str, content: str, score: float = 0.5, title: str = "T") -> dict:
+    return {"url": url, "title": title, "content": content, "favicon": None, "score": score}
+
+
+@pytest.fixture
+def fake_search() -> FakeSearch:
+    return FakeSearch()
