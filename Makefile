@@ -24,7 +24,7 @@ test:
 	cd backend && $(PY) -m pytest
 	cd backend && $(PY) -m ruff check . ../scripts
 ifneq ($(HAS_FRONTEND),)
-	cd frontend && npx tsc --noEmit
+	cd frontend && npx tsc --noEmit && npx vitest run
 endif
 
 build:
