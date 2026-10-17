@@ -2,21 +2,23 @@ import { GITHUB_URL } from "../api";
 
 export default function Footer() {
   return (
-    <footer className="border-t border-line">
-      <div className="mx-auto flex max-w-5xl flex-col gap-2 px-4 py-6 text-xs text-muted sm:flex-row sm:items-center sm:justify-between sm:px-6">
+    <footer className="mx-auto w-full max-w-[60rem] px-4 sm:px-12">
+      <div className="flex flex-col gap-2 border-t border-line py-6 text-[11px] text-muted sm:flex-row sm:items-center sm:justify-between">
         <p>
-          Powered by <span className="font-medium text-ink">NVIDIA Nemotron</span> on Nebius Token
-          Factory <span aria-hidden>·</span> Search by Tavily <span aria-hidden>·</span>{" "}
+          <span className="uppercase">Verity</span> / Follow the evidence.
+        </p>
+        <p className="text-note">
+          NVIDIA Nemotron on Nebius Token Factory <span aria-hidden>·</span> Search by Tavily{" "}
+          <span aria-hidden>·</span>{" "}
           <a
             href={GITHUB_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="underline decoration-line underline-offset-2 hover:text-ink hover:decoration-accent"
+            className="underline decoration-note/40 underline-offset-2 hover:text-ink"
           >
             Open source
           </a>
         </p>
-        <p className="font-serif italic">Fact-checks you can audit.</p>
       </div>
     </footer>
   );

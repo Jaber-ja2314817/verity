@@ -1,55 +1,47 @@
 @import "tailwindcss";
 
-/* Design tokens. Light by default; dark follows the system setting. */
+/* Design tokens: the "evidence desk" direction. Dark green-black paper, sage accent. */
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-serif: "Source Serif 4", ui-serif, Georgia, serif;
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Newsreader", ui-serif, Georgia, serif;
 
-  --color-paper: #fafaf7;
-  --color-surface: #ffffff;
-  --color-ink: #16160f;
-  --color-muted: #5f5f55;
-  --color-line: #e4e4dc;
-  --color-accent: #76b900;
-  --color-accent-ink: #3f6600;
+  --color-frame: #191c19;
+  --color-paper: #1f2320;
+  --color-surface: #262b28;
+  --color-ink: #ecebe4;
+  --color-muted: #aeb2aa;
+  --color-line: #3a403c;
+  --color-rule: #c9ccc4;
+  --color-accent: #a9c6a8;
+  --color-accent-ink: #a9c6a8;
+  --color-on-accent: #1f2320;
+  --color-note: #c8c79a;
 
-  --color-v-true: #1f7a3a;
-  --color-v-true-bg: #e6f4ea;
-  --color-v-false: #b42318;
-  --color-v-false-bg: #fdecea;
-  --color-v-misleading: #a15c00;
-  --color-v-misleading-bg: #fdf3e1;
-  --color-v-unverified: #55554d;
-  --color-v-unverified-bg: #eeeee8;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-paper: #121210;
-    --color-surface: #1b1b18;
-    --color-ink: #ededE6;
-    --color-muted: #a3a397;
-    --color-line: #2e2e29;
-    --color-accent: #8fd11a;
-    --color-accent-ink: #b5e86a;
-
-    --color-v-true: #6fd38d;
-    --color-v-true-bg: #16301f;
-    --color-v-false: #ff8a7f;
-    --color-v-false-bg: #3a1a17;
-    --color-v-misleading: #f3b65a;
-    --color-v-misleading-bg: #36280f;
-    --color-v-unverified: #b9b9ad;
-    --color-v-unverified-bg: #2a2a25;
-  }
+  --color-v-true: #8fd3a3;
+  --color-v-true-bg: #1d3325;
+  --color-v-false: #ff9a8f;
+  --color-v-false-bg: #3a1f1c;
+  --color-v-misleading: #f0bd6a;
+  --color-v-misleading-bg: #382b15;
+  --color-v-unverified: #bdbfb6;
+  --color-v-unverified-bg: #2c302d;
 }
 
 html {
-  color-scheme: light dark;
+  color-scheme: dark;
+  background: var(--color-frame);
 }
 
 body {
-  @apply bg-paper text-ink font-sans antialiased;
+  @apply bg-frame text-ink font-sans antialiased;
+}
+
+/* Small uppercase labels used across the desk layout. */
+@utility eyebrow {
+  font-size: 0.6875rem;
+  line-height: 1rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
 }
 
 :focus-visible {

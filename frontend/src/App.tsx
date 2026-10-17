@@ -8,34 +8,42 @@ import NotFound from "./pages/NotFound";
 
 function Header() {
   const nav = ({ isActive }: { isActive: boolean }) =>
-    `text-sm transition-colors ${isActive ? "text-ink" : "text-muted hover:text-ink"}`;
+    `transition-colors ${isActive ? "text-accent" : "text-muted hover:text-ink"}`;
   return (
-    <header className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-4 py-5 sm:px-6">
-      <Link to="/" className="flex items-center gap-2 font-semibold tracking-tight">
-        <span aria-hidden className="grid h-7 w-7 place-items-center rounded-md bg-accent text-white">
-          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="3">
-            <path d="M5 12.5l4.5 4.5L19 7.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </span>
-        Verity
-      </Link>
-      <nav className="flex gap-5">
-        <NavLink to="/how-it-works" className={nav}>
-          How it works
-        </NavLink>
-        <NavLink to="/benchmark" className={nav}>
-          Benchmark
-        </NavLink>
-      </nav>
+    <header className="mx-auto w-full max-w-[60rem] px-4 pt-8 sm:px-12">
+      <div className="flex items-center justify-between gap-6 border-b border-rule/80 pb-5">
+        <Link to="/" className="flex items-center gap-6">
+          <span className="font-serif text-[2.3rem] font-light leading-none tracking-[-0.02em]">verity.</span>
+          <span aria-hidden className="hidden h-10 w-px bg-line sm:block" />
+          <span className="hidden text-[13px] leading-snug text-muted sm:block">
+            An evidence
+            <br />
+            investigation desk
+          </span>
+        </Link>
+        <nav className="eyebrow flex gap-2 text-muted">
+          <NavLink to="/how-it-works" className={nav}>
+            How it works
+          </NavLink>
+          <span aria-hidden>/</span>
+          <NavLink to="/benchmark" className={nav}>
+            Benchmark
+          </NavLink>
+        </nav>
+      </div>
+      <div className="eyebrow flex justify-between gap-4 pt-3 text-muted">
+        <p>Question carefully. Follow the evidence.</p>
+        <p className="hidden sm:block">Evidence desk · Two-model jury</p>
+      </div>
     </header>
   );
 }
 
 export default function App() {
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex min-h-screen flex-col sm:m-1.5 sm:min-h-[calc(100vh-0.75rem)] bg-paper">
       <Header />
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 pb-16 sm:px-6">
+      <main className="mx-auto w-full max-w-[60rem] flex-1 px-4 pt-10 pb-16 sm:px-12">
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/c/:id" element={<CheckPage />} />
