@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     model_judge: str = ""
     structured_mode_fast: StructuredMode = "tool_forced"
     structured_mode_judge: StructuredMode = "tool_forced"
+    # Nemotron reasoning on/off per model. Off for FAST: its reasoning can use the whole token
+    # budget before it calls the submit tool (see docs/FEEDBACK.md).
+    thinking_fast: bool = False
+    thinking_judge: bool = True
 
     # Tavily
     tavily_api_key: str = ""
@@ -57,6 +61,10 @@ class Settings(BaseSettings):
             self.model_fast: self.structured_mode_fast,
             self.model_judge: self.structured_mode_judge,
         }
+
+    @property
+    def thinking(self) -> dict[str, bool]:
+        return {self.model_fast: self.thinking_fast, self.model_judge: self.thinking_judge}
 
     @property
     def prices(self) -> dict[str, tuple[float, float]]:

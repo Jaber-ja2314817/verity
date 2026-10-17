@@ -20,6 +20,7 @@ async def extract_claims(text: str, deps: "Deps", trace: Trace) -> ClaimExtracti
         system=system_prompt(deps.today()),
         user=user,
         schema=ClaimExtraction,
+        thinking=True,  # without reasoning FAST adds claims the input never made; input is short
     )
 
 

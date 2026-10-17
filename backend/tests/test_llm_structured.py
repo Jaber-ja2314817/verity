@@ -38,7 +38,7 @@ class FakeOpenAI:
 
 
 async def call(client: FakeOpenAI, trace: Trace, **kw) -> Verdict:
-    llm = LLM(client=client, modes=kw.pop("modes", None))
+    llm = LLM(client=client, modes=kw.pop("modes", None), thinking=kw.pop("thinking", None))
     return await llm.structured(
         trace=trace,
         step="verdict",
@@ -104,3 +104,31 @@ async def test_text_json_mode_sends_no_tools():
     assert v.label == "TRUE"
     assert "tools" not in client.requests[0]
     assert '"confidence"' in client.requests[0]["messages"][0]["content"]  # schema in prompt
+
+
+async def test_thinking_setting_sent_as_chat_template_kwargs():
+    client = FakeOpenAI(tool_reply(VALID), tool_reply(VALID), tool_reply(VALID))
+    await call(client, Trace(), thinking={"nvidia/fast": False})
+    await call(client, Trace(), thinking={"nvidia/fast": True})
+    await call(client, Trace())
+    off, on, unset = client.requests
+    assert off["extra_body"] == {"chat_template_kwargs": {"enable_thinking": False}}
+    assert off["max_tokens"] == 4096
+    assert on["extra_body"] == {"chat_template_kwargs": {"enable_thinking": True}}
+    assert on["max_tokens"] == 16384
+    assert "extra_body" not in unset
+
+
+async def test_thinking_per_call_overrides_model_setting():
+    client = FakeOpenAI(tool_reply(VALID))
+    llm = LLM(client=client, thinking={"nvidia/fast": False})
+    await llm.structured(
+        trace=Trace(),
+        step="s",
+        model="nvidia/fast",
+        system="sys",
+        user="u",
+        schema=Verdict,
+        thinking=True,
+    )
+    assert client.requests[0]["extra_body"] == {"chat_template_kwargs": {"enable_thinking": True}}

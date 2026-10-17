@@ -340,3 +340,17 @@ async def test_bad_text_is_ingest_error(deps, fake_llm):
     rec = await run(deps, CheckRequest(text="short"))
     assert rec.status == "error" and "too short" in rec.error
     assert fake_llm.calls == []
+
+
+def test_render_sources_swaps_double_quotes_and_quote_still_verifies():
+    from app.pipeline.evidence import render_sources
+    from app.quotes import verify_quote
+    from app.schemas import Source
+
+    content = 'It is “not visible”, and "indeed visible to the naked eye," says Cernan.'
+    src = Source(id=1, url="https://x.org/a", title='The "myth"', domain="x.org", content=content)
+    rendered = render_sources([src])
+    assert rendered.count('"') == 6  # only the tag attribute quotes remain
+    assert "“" not in rendered and "'indeed visible" in rendered
+    copied = "'indeed visible to the naked eye,' says Cernan."
+    assert verify_quote(copied, content)

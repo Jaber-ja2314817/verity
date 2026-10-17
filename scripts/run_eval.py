@@ -318,7 +318,10 @@ def make_deps(settings: Settings) -> Deps:
     return Deps(
         settings=settings,
         llm=LLM(
-            settings.nebius_base_url, settings.nebius_api_key, modes=settings.structured_modes
+            settings.nebius_base_url,
+            settings.nebius_api_key,
+            modes=settings.structured_modes,
+            thinking=settings.thinking,
         ),  # fmt: skip
         search=Search(
             settings.tavily_api_key,

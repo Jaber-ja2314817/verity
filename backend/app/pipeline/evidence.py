@@ -31,9 +31,16 @@ async def find_sources(
     )
 
 
+DOUBLE_QUOTES = str.maketrans({'"': "'", "\u201c": "'", "\u201d": "'"})
+
+
 def render_sources(sources: list[Source]) -> str:
+    """Double quotes become single quotes: a model copying a quote containing " into a JSON
+    string can break the JSON and degenerate. verify_quote ignores punctuation, so it still
+    matches the original source text."""
     return "\n\n".join(
-        f'<source id="{x.id}" domain="{x.domain}" title="{x.title}">{x.content}</source>'
+        f'<source id="{x.id}" domain="{x.domain}" title="{x.title.translate(DOUBLE_QUOTES)}">'
+        f"{x.content.translate(DOUBLE_QUOTES)}</source>"
         for x in sources
     )
 

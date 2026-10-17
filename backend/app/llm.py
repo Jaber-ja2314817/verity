@@ -1,4 +1,5 @@
 import json
+import logging
 import time
 from typing import Any, TypeVar
 
@@ -11,6 +12,9 @@ from .trace import Trace
 
 T = TypeVar("T", bound=BaseModel)
 
+log = logging.getLogger(__name__)
+
+THINKING_MAX_TOKENS = 16384  # reasoning tokens count toward max_tokens
 MUST_CALL_SUBMIT = "You must call the submit tool with your final answer."
 
 
@@ -27,12 +31,14 @@ class LLM:
         api_key: str = "",
         *,
         modes: dict[str, StructuredMode] | None = None,
+        thinking: dict[str, bool] | None = None,
         client: Any = None,
     ):
         self.client = client or AsyncOpenAI(
             base_url=base_url, api_key=api_key, timeout=90, max_retries=2
         )
         self.modes = modes or {}  # model id -> how to get structured output from it
+        self.thinking = thinking or {}  # model id -> reasoning on/off (unset: model default)
 
     async def structured(
         self,
@@ -43,8 +49,9 @@ class LLM:
         system: str,
         user: str,
         schema: type[T],
-        max_tokens: int = 4096,
+        max_tokens: int | None = None,
         mode: StructuredMode | None = None,
+        thinking: bool | None = None,
     ) -> T:
         mode = mode or self.modes.get(model, "tool_forced")
         json_schema = inline_refs(schema.model_json_schema())
@@ -59,6 +66,11 @@ class LLM:
             system = f"{system}\n\nReply with only the JSON object, no other text."
 
         kwargs: dict[str, Any] = {}
+        if thinking is None:
+            thinking = self.thinking.get(model)
+        if thinking is not None:
+            kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": thinking}}
+        max_tokens = max_tokens or (THINKING_MAX_TOKENS if thinking is not False else 4096)
         if mode != "text_json":
             kwargs["tools"] = [
                 {
@@ -91,6 +103,7 @@ class LLM:
                 step=step, model=model, usage=resp.usage, latency_s=time.perf_counter() - t0
             )
             msg = resp.choices[0].message
+            raw = None
             try:
                 if msg.tool_calls:
                     raw = msg.tool_calls[0].function.arguments
@@ -99,6 +112,13 @@ class LLM:
                 return schema.model_validate_json(raw)
             except (ValidationError, ValueError, TypeError, IndexError, AttributeError) as e:
                 last_error = e
+                log.warning(
+                    "%s: invalid output (%s, finish_reason=%s): %r",
+                    step,
+                    e,
+                    getattr(resp.choices[0], "finish_reason", None),
+                    (raw if raw is not None else msg.content or "")[:2000],
+                )
                 retry_hint = (
                     "Reply again with only a JSON object that matches the schema exactly."
                     if mode == "text_json"

@@ -104,7 +104,13 @@ def create_app(
         )
         app.state.deps = Deps(
             settings=s,
-            llm=llm or LLM(s.nebius_base_url, s.nebius_api_key, modes=s.structured_modes),
+            llm=llm
+            or LLM(
+                s.nebius_base_url,
+                s.nebius_api_key,
+                modes=s.structured_modes,
+                thinking=s.thinking,
+            ),
             search=search
             or Search(
                 s.tavily_api_key,

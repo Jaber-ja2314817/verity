@@ -5,6 +5,9 @@ Rules:
   quotes, rankings). Opinions, predictions, questions and jokes are NOT checkworthy.
 - Rewrite each claim so it stands alone: replace pronouns with names, include dates/places
   mentioned in the input. Keep the original meaning. Max 30 words.
+- Extract ONLY claims the input itself makes. Never add claims from your own knowledge:
+  no corrections, counter-claims, background facts or related claims. A one-sentence input
+  usually has exactly one claim. Do not judge whether a claim is true here.
 - Merge duplicates. Order by importance (most central claim first).
 - Return at most {max_claims_plus_two} claims. Set checkworthy=false with a short reason for
   ones that can't be checked.
