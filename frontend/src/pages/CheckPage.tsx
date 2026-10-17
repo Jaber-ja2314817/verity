@@ -127,6 +127,14 @@ function CheckView({ id }: { id: string }) {
             Verity checks statements of fact — numbers, dates, events, scientific facts. Opinions
             and predictions can't be fact-checked.
           </p>
+          {record.skipped_claims[0] && (
+            <p className="mt-3 text-sm">
+              Why: <span className="text-muted">{record.skipped_claims[0].reason}</span>
+            </p>
+          )}
+          <p className="mt-3 text-sm text-muted">
+            Try writing it as a statement, e.g. “Coffee stunts your growth.”
+          </p>
         </div>
       )}
 
