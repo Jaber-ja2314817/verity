@@ -16,7 +16,7 @@ from ..schemas import (
     JuryResult,
     Verdict,
 )
-from ..search import IngestError
+from ..search import IngestError, SearchUnavailable
 from ..store import Store
 from ..trace import Trace
 from .claims import extract_claims, select_claims
@@ -29,6 +29,7 @@ log = logging.getLogger(__name__)
 
 TIMEOUT_MESSAGE = "The check took too long. Try a shorter text."
 GENERIC_MESSAGE = "Something went wrong while checking. Please try again."
+SEARCH_DOWN_MESSAGE = "Web search is not responding right now. Please try again in a minute."
 CLAIM_FAILED = "Checking failed for this claim."
 NO_SOURCES = "No sources found."
 NO_USABLE_EVIDENCE = "Sources found but none directly addressed the claim."
@@ -78,6 +79,9 @@ async def run_check(check_id: str, req: CheckRequest, deps: Deps) -> None:
         except IngestError as e:
             error = str(e)
             log.info("check_id=%s ingest failed: %s", check_id, e)
+        except SearchUnavailable:
+            error = SEARCH_DOWN_MESSAGE
+            log.warning("check_id=%s web search unavailable", check_id, exc_info=True)
         except TimeoutError:
             error = TIMEOUT_MESSAGE
             log.warning("check_id=%s timed out", check_id)
@@ -142,7 +146,7 @@ async def _run(record: CheckRecord, req: CheckRequest, deps: Deps, trace: Trace)
         )
         record.claims.append(result)
         emit("claim_done", claim_id=claim.id, final=result.result.final.model_dump(),
-             agreed=True, debated=False)  # fmt: skip
+             agreed=True, debated=False, rechecked=False)  # fmt: skip
     if failures:
         await deps.store.save_check(record)
 
@@ -188,6 +192,7 @@ async def _check_claim(
         final=result.final.model_dump(),
         agreed=result.agreed,
         debated=result.debated,
+        rechecked=result.rechecked,
     )
     return ClaimResult(
         id=claim.id, text=claim.text, queries=queries, evidence=evidence, result=result

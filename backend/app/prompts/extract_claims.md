@@ -5,6 +5,8 @@ Rules:
   quotes, rankings). Opinions, predictions, questions and jokes are NOT checkworthy.
 - Rewrite each claim so it stands alone: replace pronouns with names, include dates/places
   mentioned in the input. Keep the original meaning. Max 30 words.
+- Keep every qualifier exactly as stated: numbers, units, "about", "first", "only",
+  "most", time words ("now", "in 2020") and who said it. They decide the verdict.
 - Extract ONLY claims the input itself makes. Never add claims from your own knowledge:
   no corrections, counter-claims, background facts or related claims. A one-sentence input
   usually has exactly one claim. Do not judge whether a claim is true here.

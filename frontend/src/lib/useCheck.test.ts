@@ -46,6 +46,16 @@ describe("checkReducer", () => {
     expect(currentStep(s)).toBe(5);
   });
 
+  it("marks a recheck when both models found too little evidence", () => {
+    let s = run([{ type: "claims_found", claims: [{ id: 1, text: "c" }], skipped: 0, language: "en" }]);
+    s = run([
+      { type: "verdicts_drafted", claim_id: 1, draft_label: "UNVERIFIED", jury_label: "UNVERIFIED", agreed: true },
+      { type: "recheck_started", claim_id: 1, queries: ["q"] },
+    ], s);
+    expect(s.progress.claims[0]).toMatchObject({ stage: "debating", rechecked: true, debated: true });
+    expect(currentStep(s)).toBe(4);
+  });
+
   it("never moves a claim backwards", () => {
     let s = run([{ type: "claims_found", claims: [{ id: 1, text: "c" }], skipped: 0, language: "en" }]);
     s = run([{ type: "claim_done", claim_id: 1, final: verdict, agreed: true, debated: false }], s);
@@ -56,6 +66,23 @@ describe("checkReducer", () => {
   it("collects live model calls", () => {
     const s = run([{ type: "model_call", step: "extract_claims", model: "nvidia/x", input_tokens: 1, output_tokens: 2, latency_s: 0.5, cost_usd: null }]);
     expect(s.progress.trace).toEqual([{ step: "extract_claims", model: "nvidia/x", input_tokens: 1, output_tokens: 2, latency_s: 0.5, cost_usd: null }]);
+  });
+
+  it("is idempotent when a reconnect replays the event history", () => {
+    const call = { type: "model_call" as const, step: "extract_claims", model: "nvidia/x", input_tokens: 1, output_tokens: 2, latency_s: 0.5, cost_usd: null };
+    const history: CheckAction[] = [
+      { type: "snapshot", record: record() },
+      { type: "ingest_done", chars: 100 },
+      call,
+      { type: "claims_found", claims: [{ id: 1, text: "c1" }], skipped: 0, language: "en" },
+      { type: "queries_planned", claim_id: 1, queries: ["q"] },
+    ];
+    const once = run(history);
+    const twice = run(history, once); // reconnect: new snapshot + full replay
+    expect(twice.progress).toEqual(once.progress);
+    expect(twice.progress.trace).toHaveLength(1);
+    expect(run([call], once).progress.trace).toHaveLength(1); // a stray duplicate is skipped too
+    expect(run([{ type: "ping" }], once)).toBe(once);
   });
 
   it("records stream errors", () => {

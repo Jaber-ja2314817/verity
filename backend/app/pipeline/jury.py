@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
@@ -11,6 +12,14 @@ from .verdict import post_check, render_evidence, verdict
 if TYPE_CHECKING:
     from .orchestrator import Deps
 
+log = logging.getLogger(__name__)
+
+DISAGREED = "Two independent reviewers disagreed about this claim."
+RECHECK = (
+    "Two independent reviewers both found the first evidence too weak to decide (UNVERIFIED), "
+    "so more evidence was gathered. Their opinions below are about the first evidence only."
+)
+
 
 def _label_rules() -> str:
     """The Labels + Guidance part of verdict.md. final_ruling.md says "same label definitions and
@@ -18,6 +27,38 @@ def _label_rules() -> str:
     them for it to refer to."""
     text = load_prompt("verdict")
     return text[text.index("Labels:") : text.index("<claim>")].strip()
+
+
+def _extra_queries(draft: Verdict, jury: Verdict, limit: int) -> list[str]:
+    qs = (q.strip() for q in draft.missing_evidence_queries + jury.missing_evidence_queries)
+    return list(dict.fromkeys(q for q in qs if q))[:limit]
+
+
+async def _extra_round(
+    claim_id: int,
+    claim_text: str,
+    queries: list[str],
+    sources: list[Source],
+    evidence: list[Evidence],
+    deps: "Deps",
+    trace: Trace,
+) -> tuple[list[Source], list[Evidence], int]:
+    """Search the reviewers' missing-evidence queries and assess only the new sources.
+    Returns extended sources and evidence plus the number of new usable items. A failed search
+    is logged and the check continues with the evidence it already has (no data is invented)."""
+    start = max((x.id for x in sources), default=0) + 1
+    try:
+        new_sources = await find_sources(
+            queries, deps, claim=claim_text, start_id=start, exclude=sources
+        )
+    except Exception:  # noqa: BLE001 - the extra round is optional; the claim must not fail
+        log.warning("claim %s: extra search failed; ruling on existing evidence", claim_id,
+                    exc_info=True)  # fmt: skip
+        return sources, evidence, 0
+    new_evidence = await assess_evidence(
+        claim_text, new_sources, deps, trace, f"debate_assess[claim {claim_id}]"
+    )
+    return sources + new_sources, evidence + new_evidence, len(usable(new_evidence))
 
 
 async def run_jury(
@@ -30,7 +71,10 @@ async def run_jury(
     trace: Trace,
     emit: Callable[..., object],
 ) -> tuple[JuryResult, list[Source], list[Evidence]]:
-    """Draft (FAST) and jury (JUDGE) in parallel; debate + final ruling if they disagree.
+    """Draft (FAST) and jury (JUDGE) in parallel.
+    - Same label: merged verdict (mean confidence). If that label is UNVERIFIED and the reviewers
+      proposed queries, one extra search; new usable evidence -> final ruling by JUDGE (recheck).
+    - Different labels: extra search with their queries, then final ruling by JUDGE.
     Returns the result plus the (possibly extended) sources and evidence."""
     s = deps.settings
     good = usable(evidence)
@@ -48,9 +92,10 @@ async def run_jury(
         jury_label=jury.label,
         agreed=agreed,
     )
+    extra = _extra_queries(draft, jury, s.max_extra_queries)
 
     if agreed:
-        final = jury.model_copy(
+        merged = jury.model_copy(
             update={
                 "confidence": round((draft.confidence + jury.confidence) / 2),
                 "cited_source_ids": list(
@@ -58,31 +103,32 @@ async def run_jury(
                 ),
             }
         )
-        final = post_check(final, {e.source.id for e in good})
-        result = JuryResult(draft=draft, jury=jury, agreed=True, debated=False, final=final)
+        final = post_check(merged, good)
+        if final.label != "UNVERIFIED" or not extra:
+            result = JuryResult(draft=draft, jury=jury, agreed=True, debated=False, final=final)
+            return result, sources, evidence
+        emit("recheck_started", claim_id=claim_id, queries=extra)
+        sources, evidence, new_usable = await _extra_round(
+            claim_id, claim_text, extra, sources, evidence, deps, trace
+        )
+        if new_usable:
+            final = await final_ruling(
+                claim_id, claim_text, usable(evidence), draft, jury, language, deps, trace,
+                situation=RECHECK,
+            )  # fmt: skip
+        result = JuryResult(
+            draft=draft, jury=jury, agreed=True, debated=True, rechecked=True, final=final
+        )
         return result, sources, evidence
 
-    extra = list(
-        dict.fromkeys(
-            q.strip()
-            for q in draft.missing_evidence_queries + jury.missing_evidence_queries
-            if q.strip()
-        )
-    )[: s.max_extra_queries]
     if extra:
         emit("debate_started", claim_id=claim_id, queries=extra)
-        start = max((x.id for x in sources), default=0) + 1
-        new_sources = await find_sources(
-            extra, deps, claim=claim_text, start_id=start, exclude=sources
+        sources, evidence, _ = await _extra_round(
+            claim_id, claim_text, extra, sources, evidence, deps, trace
         )
-        new_evidence = await assess_evidence(
-            claim_text, new_sources, deps, trace, f"debate_assess[claim {claim_id}]"
-        )
-        sources = sources + new_sources
-        evidence = evidence + new_evidence
-        good = usable(evidence)
-
-    final = await final_ruling(claim_id, claim_text, good, draft, jury, language, deps, trace)
+    final = await final_ruling(
+        claim_id, claim_text, usable(evidence), draft, jury, language, deps, trace
+    )
     result = JuryResult(draft=draft, jury=jury, agreed=False, debated=bool(extra), final=final)
     return result, sources, evidence
 
@@ -96,10 +142,13 @@ async def final_ruling(
     language: str,
     deps: "Deps",
     trace: Trace,
+    *,
+    situation: str = DISAGREED,
 ) -> Verdict:
     user = render(
         load_prompt("final_ruling"),
         {
+            "situation": situation,
             "claim": claim_text,
             "all_evidence": render_evidence(good),
             "draft.label": draft.label,
@@ -116,7 +165,7 @@ async def final_ruling(
         step=f"final_ruling[claim {claim_id}]",
         model=deps.settings.model_judge,
         system=system_prompt(deps.today()),
-        user=f"{user}\n\n{_label_rules()}",
+        user=f"{user}\n{render(_label_rules(), {'language': language})}",
         schema=Verdict,
     )
-    return post_check(v, {e.source.id for e in good})
+    return post_check(v, good)

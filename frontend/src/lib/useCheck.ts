@@ -24,6 +24,7 @@ export interface ClaimProgress {
   juryLabel?: Label;
   agreed?: boolean;
   debated?: boolean;
+  rechecked?: boolean; // both models said UNVERIFIED; searching again
   final?: Verdict;
 }
 
@@ -104,6 +105,7 @@ function fromRecord(p: Progress, record: CheckRecord): Progress {
         final: c.result.final,
         agreed: c.result.agreed,
         debated: c.result.debated,
+        rechecked: c.result.rechecked ?? false,
         draftLabel: c.result.draft.label,
         juryLabel: c.result.jury.label,
       },
@@ -113,12 +115,29 @@ function fromRecord(p: Progress, record: CheckRecord): Progress {
   return next;
 }
 
+function sameCall(a: TraceEntry, b: TraceEntry): boolean {
+  return (
+    a.step === b.step &&
+    a.model === b.model &&
+    a.input_tokens === b.input_tokens &&
+    a.output_tokens === b.output_tokens &&
+    a.latency_s === b.latency_s &&
+    a.cost_usd === b.cost_usd
+  );
+}
+
 export function checkReducer(state: CheckState, action: CheckAction): CheckState {
   const p = state.progress;
   switch (action.type) {
     case "snapshot":
+      // Every (re)connection starts with a snapshot followed by a replay of the full event
+      // history, so rebuild progress from scratch instead of merging (no duplicated trace rows).
+      return { record: action.record, progress: fromRecord(initialState.progress, action.record) };
     case "record":
+      // A polled record: merge (polling has no replay).
       return { record: action.record, progress: fromRecord(p, action.record) };
+    case "ping":
+      return state;
     case "ingest_done":
       return { ...state, progress: { ...p, ingested: true, title: action.title, chars: action.chars } };
     case "claims_found": {
@@ -166,18 +185,29 @@ export function checkReducer(state: CheckState, action: CheckAction): CheckState
         ...state,
         progress: updateClaim(p, action.claim_id, { debated: true }, "debating"),
       };
+    case "recheck_started":
+      return {
+        ...state,
+        progress: updateClaim(p, action.claim_id, { debated: true, rechecked: true }, "debating"),
+      };
     case "claim_done":
       return {
         ...state,
         progress: updateClaim(
           p,
           action.claim_id,
-          { final: action.final, agreed: action.agreed, debated: action.debated },
+          {
+            final: action.final,
+            agreed: action.agreed,
+            debated: action.debated,
+            ...(action.rechecked !== undefined && { rechecked: action.rechecked }),
+          },
           "done",
         ),
       };
     case "model_call": {
       const { type: _t, ...entry } = action;
+      if (p.trace.some((e) => sameCall(e, entry))) return state; // replayed event
       return { ...state, progress: { ...p, trace: [...p.trace, entry] } };
     }
     case "done":
@@ -217,20 +247,25 @@ export function isTerminal(record: CheckRecord | null): boolean {
   return record?.status === "done" || record?.status === "error";
 }
 
-const WATCHDOG_MS = 10_000;
+// The server sends a {"type":"ping"} event every 5 s, so 15 s of silence means the stream is
+// stalled (e.g. a buffering proxy) even if it never errors: switch to polling.
+const WATCHDOG_MS = 15_000;
 const POLL_MS = 2_000;
+const MAX_STREAM_ERRORS = 3;
 
 export interface UseCheck {
   state: CheckState;
   loading: boolean;
   notFound: boolean;
   loadError: string | null;
+  reconnecting: boolean; // the live connection dropped; retrying
 }
 
 interface Meta {
   loading: boolean;
   notFound: boolean;
   loadError: string | null;
+  reconnecting: boolean;
 }
 
 type MetaAction = Partial<Meta>;
@@ -245,12 +280,21 @@ export function useCheck(id: string): UseCheck {
     loading: true,
     notFound: false,
     loadError: null,
+    reconnecting: false,
   });
   useEffect(() => {
     let cancelled = false;
     let source: EventSource | null = null;
     let watchdog: ReturnType<typeof setTimeout> | undefined;
     let poller: ReturnType<typeof setInterval> | undefined;
+    let streamErrors = 0;
+    let reconnecting = false;
+
+    const setReconnecting = (v: boolean) => {
+      if (cancelled || v === reconnecting) return;
+      reconnecting = v;
+      setMeta({ reconnecting: v });
+    };
 
     const stopStream = () => {
       if (watchdog) clearTimeout(watchdog);
@@ -263,6 +307,7 @@ export function useCheck(id: string): UseCheck {
       stopStream();
       if (poller) clearInterval(poller);
       poller = undefined;
+      setReconnecting(false);
     };
 
     const refresh = async (): Promise<CheckRecord | null> => {
@@ -270,9 +315,11 @@ export function useCheck(id: string): UseCheck {
         const record = await api.getCheck(id);
         if (cancelled) return null;
         dispatch({ type: "record", record });
+        setReconnecting(false);
         return record;
       } catch {
-        return null; // transient; polling keeps trying
+        setReconnecting(true); // transient; polling / the stream keeps trying
+        return null;
       }
     };
 
@@ -297,26 +344,42 @@ export function useCheck(id: string): UseCheck {
         startPolling();
         return;
       }
-      source = new EventSource(api.eventsUrl(id));
+      const es = new EventSource(api.eventsUrl(id));
+      source = es;
       armWatchdog();
-      source.onmessage = (msg) => {
+      es.onopen = () => {
+        streamErrors = 0;
+        setReconnecting(false);
+      };
+      es.onmessage = (msg) => {
         armWatchdog();
+        streamErrors = 0;
+        setReconnecting(false);
         let event: CheckEvent;
         try {
           event = JSON.parse(msg.data) as CheckEvent;
         } catch {
           return;
         }
+        if (event.type === "ping") return; // keep-alive: already reset the watchdog
         dispatch(event);
         if (event.type === "snapshot" && isTerminal(event.record)) {
           stopAll();
         } else if (event.type === "done" || event.type === "error") {
           stopStream();
-          void refresh(); // full record incl. trace + evidence
+          // Full record incl. trace + evidence; if that fails, poll until it arrives.
+          void refresh().then((r) => {
+            if (!cancelled && (!r || !isTerminal(r))) startPolling();
+          });
         }
       };
-      source.onerror = () => {
-        if (!cancelled) startPolling();
+      es.onerror = () => {
+        if (cancelled || source !== es) return;
+        streamErrors += 1;
+        // The browser retries on its own (and the server re-sends a snapshot on reconnect).
+        // Give up on the stream only when it is closed for good or keeps failing.
+        if (es.readyState === EventSource.CLOSED || streamErrors >= MAX_STREAM_ERRORS) startPolling();
+        else setReconnecting(true);
       };
     };
 
@@ -342,7 +405,9 @@ export function useCheck(id: string): UseCheck {
 
     return () => {
       cancelled = true;
-      stopAll();
+      if (watchdog) clearTimeout(watchdog);
+      source?.close();
+      if (poller) clearInterval(poller);
     };
   }, [id]);
 

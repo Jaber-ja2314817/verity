@@ -328,6 +328,8 @@ def make_deps(settings: Settings) -> Deps:
             store,
             depth=settings.tavily_search_depth,
             max_results=settings.tavily_max_results,
+            raw_content=settings.tavily_raw_content,
+            chunks_per_source=settings.tavily_chunks_per_source,
             cache_hours=settings.search_cache_hours,
             max_input_chars=settings.max_input_chars,
         ),  # fmt: skip

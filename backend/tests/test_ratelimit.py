@@ -1,3 +1,4 @@
+import asyncio
 from datetime import UTC, datetime
 
 import pytest
@@ -5,7 +6,13 @@ from fastapi.testclient import TestClient
 
 from app.events import EventBus
 from app.main import create_app
-from app.ratelimit import SlidingWindow, seconds_until_utc_midnight
+from app.ratelimit import (
+    SWEEP_KEYS,
+    RateLimiter,
+    RateLimitExceeded,
+    SlidingWindow,
+    seconds_until_utc_midnight,
+)
 from app.store import Store
 from tests.test_api import GOOD_TEXT, RecordingRunCheck, make_settings
 
@@ -86,3 +93,36 @@ def test_sliding_window_expires_old_hits():
 
 def test_seconds_until_utc_midnight():
     assert seconds_until_utc_midnight(datetime(2026, 10, 14, 23, 59, 0, tzinfo=UTC)) == 60
+
+
+async def test_concurrent_acquires_cannot_exceed_limits(tmp_path):
+    store = Store(tmp_path)
+    limiter = RateLimiter(store, per_ip=2, window_s=60, daily_cap=3)
+    same_ip = await asyncio.gather(*(limiter.acquire("1.1.1.1") for _ in range(5)),
+                                   return_exceptions=True)  # fmt: skip
+    assert sum(r is None for r in same_ip) == 2
+    others = await asyncio.gather(*(limiter.acquire(f"9.9.9.{i}") for i in range(5)),
+                                  return_exceptions=True)  # fmt: skip
+    assert sum(r is None for r in others) == 1  # daily cap 3 in total
+    assert await store.daily_count() == 3
+    store.close()
+
+
+async def test_daily_cap_rejection_does_not_use_the_ip_window(tmp_path):
+    store = Store(tmp_path)
+    limiter = RateLimiter(store, per_ip=1, window_s=60, daily_cap=0)
+    for _ in range(3):
+        with pytest.raises(RateLimitExceeded, match="today's free limit"):
+            await limiter.acquire("1.1.1.1")
+    assert limiter.window.retry_after("1.1.1.1") is None
+    store.close()
+
+
+def test_sliding_window_sweeps_expired_keys():
+    now = [0.0]
+    window = SlidingWindow(limit=1, window_s=10, clock=lambda: now[0])
+    for i in range(SWEEP_KEYS):
+        window.hit(f"ip{i}")
+    now[0] += 11
+    window.hit("fresh")
+    assert set(window._hits) == {"fresh"}

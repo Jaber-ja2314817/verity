@@ -1,6 +1,8 @@
 import json
 from types import SimpleNamespace
 
+import httpx
+import openai
 import pytest
 
 from app.llm import LLM, StructuredOutputError
@@ -132,3 +134,218 @@ async def test_thinking_per_call_overrides_model_setting():
         thinking=True,
     )
     assert client.requests[0]["extra_body"] == {"chat_template_kwargs": {"enable_thinking": True}}
+
+
+# ---- robustness ----
+
+WRAPPED = [
+    {"submit": VALID},
+    {"properties": VALID},
+    {"name": "submit", "arguments": VALID},
+    {"name": "submit", "arguments": json.dumps(VALID)},
+    json.dumps(json.dumps(VALID)),  # JSON encoded twice
+]
+
+
+def reply(message, finish_reason="stop"):
+    usage = SimpleNamespace(prompt_tokens=100, completion_tokens=20)
+    choice = SimpleNamespace(message=message, finish_reason=finish_reason)
+    return SimpleNamespace(choices=[choice], usage=usage)
+
+
+def message(tool_args: str | None = None, content: str | None = None, call_id: str | None = None,
+            **extra):  # fmt: skip
+    calls = None
+    if tool_args is not None:
+        fn = SimpleNamespace(name="submit", arguments=tool_args)
+        calls = [SimpleNamespace(id=call_id, function=fn)]
+    return SimpleNamespace(tool_calls=calls, content=content, **extra)
+
+
+@pytest.mark.parametrize("args", WRAPPED)
+async def test_wrapped_tool_arguments_are_unwrapped(args):
+    raw = args if isinstance(args, str) else json.dumps(args)
+    client = FakeOpenAI(tool_reply(raw))
+    v = await call(client, Trace())
+    assert v.label == "TRUE" and len(client.requests) == 1
+
+
+async def test_wrapper_with_schema_field_is_not_unwrapped():
+    client = FakeOpenAI(tool_reply({"label": "MAYBE", "x": VALID}), tool_reply(VALID))
+    await call(client, Trace())
+    assert len(client.requests) == 2  # invalid object with a real field: repaired, not guessed
+
+
+async def test_tool_call_markup_in_content_is_parsed():
+    content = f"<tool_call>{json.dumps({'name': 'submit', 'arguments': VALID})}</tool_call>"
+    v = await call(FakeOpenAI(reply(message(content=content))), Trace())
+    assert v.label == "TRUE"
+
+
+async def test_xml_tool_call_markup_in_content_is_parsed():
+    content = (
+        "<tool_call>\n<function=submit>\n<parameter=label>\nTRUE\n</parameter>\n"
+        "<parameter=confidence>\n90\n</parameter>\n<parameter=explanation>\nok\n</parameter>\n"
+        "<parameter=cited_source_ids>\n[1]\n</parameter>\n</function>\n</tool_call>"
+    )
+    v = await call(FakeOpenAI(reply(message(content=content))), Trace())
+    assert (v.label, v.confidence, v.cited_source_ids) == ("TRUE", 90, [1])
+
+
+async def test_json_only_in_reasoning_content_is_used():
+    msg = message(content="", reasoning_content=f"Final: {json.dumps(VALID)}")
+    v = await call(FakeOpenAI(reply(msg)), Trace())
+    assert v.label == "TRUE"
+
+
+async def test_reasoning_ignored_when_tool_call_present():
+    msg = message(tool_args=json.dumps(INVALID), reasoning_content=json.dumps(VALID))
+    client = FakeOpenAI(reply(msg), tool_reply(VALID))
+    await call(client, Trace())
+    assert len(client.requests) == 2  # the invalid tool call is repaired, not replaced
+
+
+async def test_empty_choices_retried_without_repair_message():
+    empty = SimpleNamespace(choices=[], usage=None)
+    client, trace = FakeOpenAI(empty, tool_reply(VALID)), Trace()
+    v = await call(client, trace)
+    assert v.label == "TRUE"
+    assert len(client.requests[1]["messages"]) == 2
+    assert len(trace.entries) == 2
+
+
+async def test_cut_off_reply_retried_with_bigger_budget():
+    cut = reply(message(tool_args='{"label": "TR'), finish_reason="length")
+    client = FakeOpenAI(cut, tool_reply(VALID))
+    v = await call(client, Trace(), thinking={"nvidia/fast": True})
+    assert v.label == "TRUE"
+    first, second = client.requests
+    assert second["max_tokens"] == 2 * first["max_tokens"]
+    assert second["messages"] == first["messages"]  # fresh try, no repair turn
+
+
+async def test_cut_off_without_reasoning_keeps_budget():
+    cut = reply(message(content=" " * 50), finish_reason="length")
+    client = FakeOpenAI(cut, cut)
+    with pytest.raises(StructuredOutputError, match="cut off"):
+        await call(client, Trace(), thinking={"nvidia/fast": False})
+    assert client.requests[0]["max_tokens"] == client.requests[1]["max_tokens"] == 4096
+
+
+async def test_repair_answers_tool_call_with_tool_message():
+    bad = reply(message(tool_args=json.dumps(INVALID), call_id="call_1"))
+    client = FakeOpenAI(bad, tool_reply(VALID))
+    await call(client, Trace())
+    assistant, tool = client.requests[1]["messages"][-2:]
+    assert assistant["role"] == "assistant"
+    assert assistant["tool_calls"][0]["id"] == "call_1"
+    assert assistant["tool_calls"][0]["function"]["arguments"] == json.dumps(INVALID)
+    assert tool["role"] == "tool" and tool["tool_call_id"] == "call_1"
+    assert "invalid" in tool["content"]
+
+
+async def test_repair_quotes_non_json_tool_args_in_user_turn():
+    bad = reply(message(tool_args="{bad", call_id="call_1"))
+    client = FakeOpenAI(bad, tool_reply(VALID))
+    await call(client, Trace())
+    assistant, user = client.requests[1]["messages"][-2:]
+    assert assistant == {"role": "assistant", "content": "{bad"}
+    assert user["role"] == "user" and "invalid" in user["content"]
+
+
+# ---- transient API errors ----
+
+URL = "https://api.example/v1/chat/completions"
+
+
+def connection_error() -> Exception:
+    return openai.APIConnectionError(request=httpx.Request("POST", URL))
+
+
+def status_error(code: int, headers: dict | None = None) -> Exception:
+    response = httpx.Response(code, headers=headers, request=httpx.Request("POST", URL))
+    cls = {429: openai.RateLimitError, 400: openai.BadRequestError}.get(
+        code, openai.InternalServerError
+    )
+    return cls("boom", response=response, body=None)
+
+
+class FlakyOpenAI(FakeOpenAI):
+    async def _create(self, **kwargs):
+        self.requests.append(kwargs)
+        item = self.replies.pop(0)
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+
+def flaky_llm(*replies) -> tuple[LLM, FlakyOpenAI, list[float]]:
+    client = FlakyOpenAI(*replies)
+    llm = LLM(client=client)
+    slept: list[float] = []
+
+    async def sleep(s: float) -> None:
+        slept.append(s)
+
+    llm.sleep = sleep
+    return llm, client, slept
+
+
+async def run(llm: LLM) -> Verdict:
+    return await llm.structured(
+        trace=Trace(), step="s", model="nvidia/fast", system="sys", user="u", schema=Verdict
+    )
+
+
+async def test_transient_errors_are_retried_with_backoff():
+    llm, client, slept = flaky_llm(connection_error(), status_error(503), tool_reply(VALID))
+    assert (await run(llm)).label == "TRUE"
+    assert len(client.requests) == 3 and slept == [1.0, 3.0]
+
+
+async def test_timeout_is_retried():
+    timeout = openai.APITimeoutError(request=httpx.Request("POST", URL))
+    llm, client, _ = flaky_llm(timeout, tool_reply(VALID))
+    assert (await run(llm)).label == "TRUE"
+
+
+async def test_rate_limit_honours_retry_after():
+    llm, _, slept = flaky_llm(status_error(429, {"retry-after": "6"}), tool_reply(VALID))
+    await run(llm)
+    assert slept == [6.0]
+
+
+async def test_bad_request_is_not_retried():
+    llm, client, _ = flaky_llm(status_error(400), tool_reply(VALID))
+    with pytest.raises(openai.BadRequestError):
+        await run(llm)
+    assert len(client.requests) == 1
+
+
+async def test_retries_give_up_after_last_delay():
+    llm, client, slept = flaky_llm(*[connection_error() for _ in range(4)])
+    with pytest.raises(openai.APIConnectionError):
+        await run(llm)
+    assert len(client.requests) == 4 and slept == [1.0, 3.0, 8.0]
+
+
+async def test_retries_stop_at_time_budget():
+    llm, client, slept = flaky_llm(connection_error(), tool_reply(VALID))
+    now = [0.0]
+    llm.clock = lambda: now[0]
+
+    async def slow_call(**kwargs):
+        client.requests.append(kwargs)
+        now[0] += 200.0  # the first attempt hung until its timeout
+        raise connection_error()
+
+    client.chat.completions.create = slow_call
+    with pytest.raises(openai.APIConnectionError):
+        await run(llm)
+    assert len(client.requests) == 1 and slept == []
+
+
+def test_sdk_client_does_not_retry_itself():
+    llm = LLM("https://api.example/v1/", "k")
+    assert llm.client.max_retries == 0
+    assert llm.client.timeout.connect == 10.0

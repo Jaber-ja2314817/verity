@@ -31,16 +31,18 @@ class QueryPlan(BaseModel):
 
 
 class SourceAssessment(BaseModel):
+    # Quote, then note, then stance: the stance follows from the source's own conclusion.
     source_id: int
-    stance: Stance
     quote: str = Field(
-        description="Exact sentence copied word for word from the source, or empty if irrelevant"
+        description="One sentence copied word for word from the source that states its own "
+        "position on the claim, or empty if irrelevant"
     )
-    note: str = Field(description="Max 20 words on why")
+    note: str = Field(description="Max 20 words: what the source itself concludes on the claim")
+    stance: Stance = Field(description="What the source itself asserts about the claim as worded")
 
 
 class EvidenceAssessment(BaseModel):
-    items: list[SourceAssessment]
+    items: list[SourceAssessment] = Field(description="Exactly one item for every source id")
 
 
 class Verdict(BaseModel):
@@ -80,6 +82,8 @@ class JuryResult(BaseModel):
     agreed: bool
     debated: bool  # extra search round happened
     final: Verdict
+    # both reviewers said UNVERIFIED, so an extra search ran; final may come from a JUDGE ruling
+    rechecked: bool = False
 
 
 class ClaimResult(BaseModel):

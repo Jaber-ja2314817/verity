@@ -1,3 +1,4 @@
+import { juryOutcome, skipInfo } from "./claims";
 import { VERDICT } from "./verdict";
 import type { CheckRecord } from "../types";
 
@@ -55,20 +56,43 @@ export function shortModel(model: string): string {
   return model.replace(/^nvidia\//i, "");
 }
 
+/** "Please wait 412 seconds" -> "Please wait about 7 minutes" (rate-limit messages). */
+export function humanizeWait(message: string): string {
+  return message.replace(/\b(\d+) seconds?\b/, (m, n: string) => {
+    const s = Number(n);
+    if (s < 90) return m;
+    const mins = Math.ceil(s / 60);
+    return `about ${mins} minute${mins === 1 ? "" : "s"}`;
+  });
+}
+
+const OUTCOME_TEXT = {
+  settled: "Decided without a jury vote (not enough usable evidence).",
+  agreed: "Both models agreed independently.",
+  rechecked: "Both models found too little evidence, so Verity searched again before the final verdict.",
+  debated: "The models disagreed; after an extra search the judge model made the final ruling.",
+  disagreed: "The models disagreed; the judge model made the final ruling.",
+} as const;
+
 /** Plain-text summary for "Copy as text" (chat-friendly). */
 export function checkToText(record: CheckRecord, url: string): string {
   const lines: string[] = ["Verity fact-check", ""];
   if (record.claims.length === 0) lines.push("No checkable factual claims found.", "");
   for (const c of [...record.claims].sort((a, b) => a.id - b.id)) {
-    const v = record.claims.length ? c.result.final : null;
-    if (!v) continue;
+    const v = c.result.final;
     lines.push(`${c.id}. "${c.text}"`);
     lines.push(`   ${VERDICT[v.label].title.toUpperCase()} (confidence ${v.confidence}%)`);
     if (v.explanation) lines.push(`   ${v.explanation}`);
+    lines.push(`   ${OUTCOME_TEXT[juryOutcome(c.result)]}`);
     const cited = c.evidence.filter(
       (e) => e.quote_verified && v.cited_source_ids.includes(e.source.id),
     );
     for (const e of cited) lines.push(`   - ${e.source.domain}: ${e.source.url}`);
+    lines.push("");
+  }
+  if (record.skipped_claims.length) {
+    lines.push("Not checked:");
+    for (const c of record.skipped_claims) lines.push(`- "${c.text}" (${skipInfo(c).reason})`);
     lines.push("");
   }
   lines.push(`Full result: ${url}`);

@@ -1,6 +1,8 @@
 import { Link } from "react-router-dom";
+import { useTitle } from "../lib/useTitle";
 
 export default function NotFound() {
+  useTitle("Page not found");
   return (
     <section className="flex flex-col items-start pt-16 sm:pt-24">
       <p className="font-serif text-7xl text-muted tabular-nums">404</p>

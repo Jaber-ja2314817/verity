@@ -26,7 +26,12 @@ log = logging.getLogger("verity")
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 REPO_DIR = BACKEND_DIR.parent
 EXAMPLES_PATH = BACKEND_DIR / "seed" / "examples.json"
-KEEP_ALIVE_SECONDS = 15.0
+# The frontend falls back to polling when the stream sends no message for 10 s, and SSE
+# comment lines do not count as messages, so the keep-alive is a real (ignored) event.
+KEEP_ALIVE_SECONDS = 5.0
+PING = {"type": "ping"}
+INTERRUPTED_MESSAGE = "The server restarted before this check finished. Please run it again."
+SHUTDOWN_GRACE_SECONDS = 5.0
 
 PLACEHOLDER_HTML = (
     "<!doctype html><html><head><meta charset='utf-8'><title>Verity</title></head>"
@@ -67,6 +72,25 @@ def _final_event(record: CheckRecord) -> dict:
     if record.status == "error":
         return {"type": "error", "message": record.error or "The check failed."}
     return {"type": "done", "totals": record.totals}
+
+
+async def _guarded(coro: Awaitable[None], state: Any, check_id: str) -> None:
+    """Run a check; if it crashes outside its own error handling, still finish the record so
+    clients waiting on the event stream get an error instead of keep-alives forever."""
+    try:
+        await coro
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        log.exception("check_id=%s crashed", check_id)
+        try:
+            record = await state.store.get_check(check_id)
+            if record is not None and record.status not in TERMINAL:
+                record.status = "error"
+                record.error = orchestrator.GENERIC_MESSAGE
+                await state.store.save_check(record)
+        finally:
+            state.events.emit(check_id, "error", message=orchestrator.GENERIC_MESSAGE)
 
 
 def create_app(
@@ -117,6 +141,8 @@ def create_app(
                 st,
                 depth=s.tavily_search_depth,
                 max_results=s.tavily_max_results,
+                raw_content=s.tavily_raw_content,
+                chunks_per_source=s.tavily_chunks_per_source,
                 cache_hours=s.search_cache_hours,
                 max_input_chars=s.max_input_chars,
             ),
@@ -125,11 +151,18 @@ def create_app(
             semaphore=asyncio.Semaphore(s.max_concurrent_checks),
         )
         app.state.run_check = run_check or orchestrator.run_check
-        app.state.tasks = set()
+        app.state.tasks = set()  # strong references, so running checks are not GC'd
+        stale = await st.fail_unfinished(INTERRUPTED_MESSAGE)
+        if stale:
+            log.warning("marked %d unfinished checks from a previous run as failed", len(stale))
         log.info("Verity started (fast=%s, judge=%s)", s.model_fast, s.model_judge)
         yield
-        for task in app.state.tasks:
+        tasks = list(app.state.tasks)
+        for task in tasks:
             task.cancel()
+        if tasks:
+            await asyncio.wait(tasks, timeout=SHUTDOWN_GRACE_SECONDS)
+            await st.fail_unfinished(INTERRUPTED_MESSAGE)
         if store is None:
             st.close()
 
@@ -158,7 +191,7 @@ def create_app(
 
         ip = client_ip(request)
         try:
-            await state.limiter.check(ip)
+            await state.limiter.acquire(ip)
         except RateLimitExceeded as e:
             return JSONResponse(
                 {"detail": e.message},
@@ -174,9 +207,9 @@ def create_app(
             input_preview=(req.text or req.url or "")[:300],
         )
         await state.store.save_check(record)
-        await state.limiter.record(ip)
 
-        task = asyncio.create_task(state.run_check(record.id, req, state.deps))
+        coro = state.run_check(record.id, req, state.deps)
+        task = asyncio.create_task(_guarded(coro, state, record.id))
         state.tasks.add(task)
         task.add_done_callback(state.tasks.discard)
         log.info("check %s queued (%s)", record.id, record.input_type)
@@ -197,18 +230,29 @@ def create_app(
 
         async def stream() -> AsyncIterator[str]:
             bus: EventBus = state.events
-            queue = bus.subscribe(check_id)  # subscribe first so no event is missed
+            # Subscribe before reading the record so no event is missed, and take the history
+            # in the same step (no await in between) so none is sent twice.
+            queue = bus.subscribe(check_id)
+            past = bus.history(check_id)
             try:
                 record = await state.store.get_check(check_id)
+                if record is None:
+                    return
                 yield _sse({"type": "snapshot", "record": record.model_dump()})
                 if record.status in TERMINAL:
                     yield _sse(_final_event(record))
                     return
+                # Replay what happened before we subscribed: the record holds no live progress
+                # (stages, model calls) until claims finish.
+                for event in past:
+                    yield _sse(event)
+                    if event.get("type") in TERMINAL:
+                        return
                 while True:
                     try:
                         event = await asyncio.wait_for(queue.get(), KEEP_ALIVE_SECONDS)
                     except TimeoutError:
-                        yield ": keep-alive\n\n"
+                        yield _sse(PING)
                         continue
                     yield _sse(event)
                     if event.get("type") in TERMINAL:

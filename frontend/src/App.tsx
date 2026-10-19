@@ -21,7 +21,7 @@ function Header() {
             investigation desk
           </span>
         </Link>
-        <nav className="eyebrow flex gap-2 text-muted">
+        <nav aria-label="Main" className="eyebrow flex shrink-0 gap-2 whitespace-nowrap text-muted">
           <NavLink to="/how-it-works" className={nav}>
             How it works
           </NavLink>
@@ -42,8 +42,14 @@ function Header() {
 export default function App() {
   return (
     <div className="flex min-h-screen flex-col sm:m-1.5 sm:min-h-[calc(100vh-0.75rem)] bg-paper">
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:bg-accent focus:px-4 focus:py-2 focus:text-sm focus:text-on-accent"
+      >
+        Skip to content
+      </a>
       <Header />
-      <main className="mx-auto w-full max-w-[60rem] flex-1 px-4 pt-10 pb-16 sm:px-12">
+      <main id="main" tabIndex={-1} className="focus:outline-none mx-auto w-full max-w-[60rem] flex-1 px-4 pt-10 pb-16 sm:px-12">
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/c/:id" element={<CheckPage />} />

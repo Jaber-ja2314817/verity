@@ -2,6 +2,7 @@ import asyncio
 import json
 import secrets
 import sqlite3
+import threading
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -41,27 +42,61 @@ class Store:
         Path(data_dir).mkdir(parents=True, exist_ok=True)
         self.path = Path(data_dir) / "verity.db"
         self._conn = sqlite3.connect(self.path, check_same_thread=False)
+        # The asyncio lock keeps calls in arrival order. The thread lock guarantees one statement
+        # at a time on the connection even when an awaiting task is cancelled (the asyncio lock
+        # is then released while the worker thread is still running).
         self._lock = asyncio.Lock()
+        self._thread_lock = threading.Lock()
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.executescript(SCHEMA)
         self._conn.commit()
 
+    def _locked(self, fn):
+        with self._thread_lock:
+            return fn()
+
     async def _run(self, fn):
         async with self._lock:
-            return await asyncio.to_thread(fn)
+            return await asyncio.to_thread(self._locked, fn)
 
     # ---- checks ----
     async def save_check(self, record: CheckRecord) -> None:
+        # Serialize now, on the event loop: pipeline tasks keep changing the record while the
+        # write waits for its turn, and must not change it while another thread dumps it.
+        row = (record.id, record.created_at, record.status, record.model_dump_json())
+
         def fn():
             self._conn.execute(
                 "INSERT INTO checks (id, created_at, status, record_json) VALUES (?, ?, ?, ?) "
                 "ON CONFLICT(id) DO UPDATE SET status=excluded.status, "
                 "record_json=excluded.record_json",
-                (record.id, record.created_at, record.status, record.model_dump_json()),
+                row,
             )
             self._conn.commit()
 
         await self._run(fn)
+
+    async def fail_unfinished(self, message: str) -> list[str]:
+        """Mark every queued/running check as failed (they died with the previous process)."""
+
+        def fn():
+            rows = self._conn.execute(
+                "SELECT record_json FROM checks WHERE status IN ('queued', 'running')"
+            ).fetchall()
+            ids = []
+            for (raw,) in rows:
+                record = CheckRecord.model_validate_json(raw)
+                record.status = "error"
+                record.error = message
+                self._conn.execute(
+                    "UPDATE checks SET status = ?, record_json = ? WHERE id = ?",
+                    (record.status, record.model_dump_json(), record.id),
+                )
+                ids.append(record.id)
+            self._conn.commit()
+            return ids
+
+        return await self._run(fn)
 
     async def get_check(self, check_id: str) -> CheckRecord | None:
         def fn():
@@ -121,6 +156,23 @@ class Store:
             return self._conn.execute(
                 "SELECT checks FROM daily_usage WHERE day = ?", (day,)
             ).fetchone()[0]
+
+        return await self._run(fn)
+
+    async def try_increment_daily(self, cap: int, day: str | None = None) -> bool:
+        """Count one more check for the day unless the day already has `cap`. Atomic."""
+        day = day or utc_now().date().isoformat()
+
+        def fn():
+            if cap <= 0:
+                return False
+            cur = self._conn.execute(
+                "INSERT INTO daily_usage (day, checks) VALUES (?, 1) "
+                "ON CONFLICT(day) DO UPDATE SET checks = checks + 1 WHERE checks < ?",
+                (day, cap),
+            )
+            self._conn.commit()
+            return cur.rowcount == 1
 
         return await self._run(fn)
 

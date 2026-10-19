@@ -48,3 +48,27 @@ def test_inline_refs_keeps_nested_structure():
     schema = inline_refs(ClaimExtraction.model_json_schema())
     item = schema["properties"]["claims"]["items"]
     assert set(item["properties"]) == {"id", "text", "checkworthy", "reason"}
+
+
+def test_strip_think_lone_close_tag_keeps_answer_only():
+    assert strip_think('reasoning {"x": 1} more</think>\n{"label": "TRUE"}') == '{"label": "TRUE"}'
+
+
+def test_strip_think_unclosed_block_is_dropped():
+    assert strip_think('{"a": 1}<think>still thinking {"b": 2}') == '{"a": 1}'
+
+
+def test_extract_json_from_code_fence():
+    assert extract_json('```json\n{"a": 1}\n```') == '{"a": 1}'
+
+
+def test_extract_json_skips_stray_braces_in_prose():
+    assert extract_json('Use {curly} braces. {"a": 1}') == '{"a": 1}'
+
+
+def test_extract_json_repairs_trailing_commas():
+    assert extract_json('{"a": [1, 2,], "b": {"c": 3,},}') == '{"a": [1, 2], "b": {"c": 3}}'
+
+
+def test_extract_json_ignores_top_level_arrays():
+    assert extract_json('[1, 2] then {"a": 1}') == '{"a": 1}'

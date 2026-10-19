@@ -8,6 +8,7 @@ from fastapi import Request
 from .store import Store
 
 PER_IP_MESSAGE = "You're checking a lot quickly. Please wait {seconds} seconds and try again."
+SWEEP_KEYS = 1000  # sweep expired keys once this many IPs are tracked
 DAILY_CAP_MESSAGE = (
     "Verity has reached today's free limit. Try again tomorrow, or browse the examples."
 )
@@ -62,13 +63,30 @@ class SlidingWindow:
     def hit(self, key: str) -> None:
         now = self.clock()
         self._prune(key, now).append(now)
+        if len(self._hits) > SWEEP_KEYS:
+            self._sweep(now)
+
+    def undo(self, key: str) -> None:
+        """Forget the latest hit for key (the request was rejected after all)."""
+        hits = self._hits.get(key)
+        if hits:
+            hits.pop()
+        if not hits:
+            self._hits.pop(key, None)
+
+    def _sweep(self, now: float) -> None:
+        """Drop keys whose hits have all expired, so memory stays bounded."""
+        for key in list(self._hits):
+            if not self._prune(key, now):
+                del self._hits[key]
 
 
 class RateLimiter:
     """Per-IP sliding window plus a per-UTC-day cap stored in SQLite.
 
-    Call check() after validation and record() only once the check is accepted, so requests
-    rejected by validation or by a limit are never counted.
+    Call acquire() after validation. It checks and counts in one step, so concurrent requests
+    cannot all pass a check before any of them is counted, and requests rejected by a limit
+    are never counted.
     """
 
     def __init__(
@@ -84,13 +102,16 @@ class RateLimiter:
         self.daily_cap = daily_cap
         self.window = SlidingWindow(per_ip, window_s, clock)
 
-    async def check(self, ip: str) -> None:
+    async def acquire(self, ip: str) -> None:
         wait = self.window.retry_after(ip)
         if wait is not None:
             raise RateLimitExceeded(PER_IP_MESSAGE.format(seconds=wait), wait)
-        if await self.store.daily_count() >= self.daily_cap:
+        self.window.hit(ip)  # before any await: the next request from this IP sees it
+        try:
+            accepted = await self.store.try_increment_daily(self.daily_cap)
+        except BaseException:
+            self.window.undo(ip)
+            raise
+        if not accepted:
+            self.window.undo(ip)
             raise RateLimitExceeded(DAILY_CAP_MESSAGE, seconds_until_utc_midnight())
-
-    async def record(self, ip: str) -> None:
-        self.window.hit(ip)
-        await self.store.increment_daily()

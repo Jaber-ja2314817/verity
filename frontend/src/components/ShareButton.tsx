@@ -36,7 +36,7 @@ export default function ShareButton({ record }: { record: CheckRecord }) {
     return () => clearTimeout(t);
   }, [status]);
 
-  const url = window.location.href;
+  const url = window.location.origin + window.location.pathname; // no #claim-N anchor
   const btn =
     "inline-flex items-center gap-2 rounded-full border border-line bg-surface px-4 py-2 text-sm font-medium hover:border-ink";
   return (

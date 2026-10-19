@@ -1,9 +1,15 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { api, ApiError } from "../api";
 import InputBox, { detectMode, validateInput } from "../components/InputBox";
+import { humanizeWait } from "../lib/format";
+import { useTitle } from "../lib/useTitle";
+import type { Example } from "../types";
 
-const SAMPLE = "Water always boils at 100°C.";
+const FALLBACK_EXAMPLES: Example[] = [
+  { title: "Boiling point", type: "text", value: "Water always boils at 100°C." },
+];
+const MAX_EXAMPLES = 3;
 
 const PILLARS = [
   {
@@ -28,18 +34,35 @@ const PILLARS = [
 
 function friendly(e: unknown): string {
   if (e instanceof ApiError) {
-    if (e.status === 429 && e.retryAfter) {
-      const mins = Math.ceil(e.retryAfter / 60);
-      return `${e.message} (try again in about ${mins} minute${mins === 1 ? "" : "s"})`;
-    }
+    // Rate-limit messages already say how long to wait; just make long waits readable.
+    if (e.status === 429) return humanizeWait(e.message);
+    if (e.status >= 500) return "Verity is having trouble right now. Please try again in a moment.";
     return e.message;
   }
   return "Something went wrong. Please try again.";
 }
 
 export default function Home() {
+  useTitle(null);
   const navigate = useNavigate();
-  const [value, setValue] = useState("");
+  const location = useLocation();
+  const prefill = (location.state as { prefill?: unknown } | null)?.prefill;
+  const [value, setValue] = useState(typeof prefill === "string" ? prefill : "");
+  const [examples, setExamples] = useState<Example[]>(FALLBACK_EXAMPLES);
+
+  useEffect(() => {
+    let alive = true;
+    api
+      .examples()
+      .then((list) => {
+        const usable = list.filter((x) => x.type === "text" && x.value.trim().length >= 20);
+        if (alive && usable.length) setExamples(usable.slice(0, MAX_EXAMPLES));
+      })
+      .catch(() => undefined); // keep the built-in sample
+    return () => {
+      alive = false;
+    };
+  }, []);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -82,21 +105,28 @@ export default function Home() {
           submitting={submitting}
           error={error}
           onSubmit={() => investigate(value)}
+          autoFocus={typeof prefill === "string"}
         />
-        <p className="mt-6 flex flex-wrap items-baseline gap-x-4 gap-y-2 text-xs">
+        <div className="mt-6 flex flex-wrap items-baseline gap-x-4 gap-y-2 text-xs">
           <span className="uppercase tracking-[0.08em] text-muted">Explore a sample</span>
-          <button
-            type="button"
-            disabled={submitting}
-            onClick={() => {
-              setValue(SAMPLE);
-              investigate(SAMPLE);
-            }}
-            className="border-b border-muted pb-0.5 text-sm text-ink/85 transition hover:border-accent hover:text-accent disabled:opacity-60"
-          >
-            “{SAMPLE}” <span aria-hidden>↗</span>
-          </button>
-        </p>
+          <ul className="flex flex-wrap gap-x-4 gap-y-2">
+            {examples.map((x) => (
+              <li key={x.value}>
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={() => {
+                    setValue(x.value);
+                    investigate(x.value);
+                  }}
+                  className="border-b border-muted pb-0.5 text-left text-sm text-ink/85 transition hover:border-accent hover:text-accent disabled:opacity-60"
+                >
+                  “{x.value}” <span aria-hidden>↗</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       </section>
 
       <section aria-label="What an investigation includes" className="mt-16 border-t border-rule/80 pt-6">

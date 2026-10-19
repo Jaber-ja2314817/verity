@@ -48,7 +48,8 @@ export interface JuryResult {
   draft: Verdict;
   jury: Verdict;
   agreed: boolean;
-  debated: boolean;
+  debated: boolean; // an extra search round happened
+  rechecked?: boolean; // both said UNVERIFIED -> extra search (+ judge ruling if new evidence); missing on older checks
   final: Verdict;
 }
 
@@ -112,6 +113,7 @@ export interface Health {
 export type Benchmark = Record<string, unknown>;
 
 // Server-Sent Events from GET /api/checks/{id}/events (field `type` is the event name).
+// Each connection starts with a snapshot, then replays the check's event history, then goes live.
 export type CheckEvent =
   | { type: "snapshot"; record: CheckRecord }
   | { type: "ingest_done"; chars: number; title?: string }
@@ -121,7 +123,9 @@ export type CheckEvent =
   | { type: "evidence_ready"; claim_id: number; verified: number; discarded: number }
   | { type: "verdicts_drafted"; claim_id: number; draft_label: Label; jury_label: Label; agreed: boolean }
   | { type: "debate_started"; claim_id: number; queries: string[] }
-  | { type: "claim_done"; claim_id: number; final: Verdict; agreed: boolean; debated: boolean }
+  | { type: "recheck_started"; claim_id: number; queries: string[] }
+  | { type: "claim_done"; claim_id: number; final: Verdict; agreed: boolean; debated: boolean; rechecked?: boolean }
   | ({ type: "model_call" } & TraceEntry)
   | { type: "done"; totals: Totals }
+  | { type: "ping" } // keep-alive, every few seconds
   | { type: "error"; message: string };

@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     tavily_api_key: str = ""
     tavily_search_depth: Literal["basic", "advanced"] = "basic"
     tavily_max_results: int = 5
+    # Full page text (markdown) with each result, so sources get claim-relevant passages instead
+    # of only Tavily's short snippet. Costs no extra credits.
+    tavily_raw_content: bool = True
+    tavily_chunks_per_source: int = 3  # only sent with advanced depth (1-3)
 
     # Pipeline limits
     max_input_chars: int = 5000
@@ -34,7 +38,7 @@ class Settings(BaseSettings):
     queries_per_claim: int = 3
     max_sources_per_claim: int = 8
     max_sources_per_domain: int = 2
-    source_chars: int = 1500
+    source_chars: int = 2500
     max_extra_queries: int = 2
     check_timeout_seconds: int = 240
     search_cache_hours: int = 24

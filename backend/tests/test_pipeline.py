@@ -5,7 +5,7 @@ from conftest import FakeLLM, FakeSearch, raw_result
 
 from app.config import Settings
 from app.events import EventBus
-from app.pipeline.orchestrator import Deps, run_check
+from app.pipeline.orchestrator import SEARCH_DOWN_MESSAGE, Deps, run_check
 from app.schemas import (
     CheckRecord,
     CheckRequest,
@@ -17,6 +17,7 @@ from app.schemas import (
     SourceAssessment,
     Verdict,
 )
+from app.search import SearchUnavailable
 from app.store import Store
 
 FAST, JUDGE = "nvidia/fast", "nvidia/judge"
@@ -139,8 +140,9 @@ async def test_disagreement_runs_debate_and_final_ruling(deps, fake_llm, fake_se
     rec = await run(deps)
 
     r = rec.claims[0].result
-    assert not r.agreed and r.debated
+    assert not r.agreed and r.debated and not r.rechecked
     assert (r.draft.label, r.jury.label, r.final.label) == ("TRUE", "FALSE", "FALSE")
+    assert r.draft.confidence == 50  # TRUE citing only a "refutes" item: capped
     assert r.final.cited_source_ids == [1, 2]
     assert fake_search.queries[-2:] == ["extra q", "more"]  # MAX_EXTRA_QUERIES = 2
     assert [e.source.id for e in rec.claims[0].evidence] == [1, 2]  # numbering continues
@@ -336,6 +338,20 @@ async def test_timeout_is_error(deps, fake_llm):
     assert rec.status == "error" and rec.error == "The check took too long. Try a shorter text."
 
 
+async def test_search_outage_on_every_claim_says_search_is_down(deps, fake_llm, fake_search):
+    fake_llm.queue("extract_claims", ClaimExtraction(language="en", claims=[claim(1, "A")]))
+    fake_llm.queue("plan_queries[claim 1]", queries("q1", "q2", "q3"))
+
+    async def down(_query):
+        raise SearchUnavailable("Web search failed: TimeoutError")
+
+    fake_search.search_web = down
+
+    rec = await run(deps)
+
+    assert rec.status == "error" and rec.error == SEARCH_DOWN_MESSAGE
+
+
 async def test_bad_text_is_ingest_error(deps, fake_llm):
     rec = await run(deps, CheckRequest(text="short"))
     assert rec.status == "error" and "too short" in rec.error
@@ -350,7 +366,99 @@ def test_render_sources_swaps_double_quotes_and_quote_still_verifies():
     content = 'It is “not visible”, and "indeed visible to the naked eye," says Cernan.'
     src = Source(id=1, url="https://x.org/a", title='The "myth"', domain="x.org", content=content)
     rendered = render_sources([src])
-    assert rendered.count('"') == 6  # only the tag attribute quotes remain
+    assert rendered.count('"') == 8  # only the tag attribute quotes remain (4 attributes)
     assert "“" not in rendered and "'indeed visible" in rendered
     copied = "'indeed visible to the naked eye,' says Cernan."
     assert verify_quote(copied, content)
+
+
+async def test_agreed_unverified_rechecks_with_extra_search(deps, fake_llm, fake_search):
+    fake_search.default = [raw_result("https://a.com/x", PAGE_A, 0.9)]
+    fake_search.results["extra q"] = [raw_result("https://b.org/y", PAGE_B, 0.8)]
+    fake_llm.queue("extract_claims", ClaimExtraction(language="en", claims=[claim(1, "Wall")]))
+    queue_claim(fake_llm, 1, ("q1", "q2", "q3"), assess((1, "mixed", QUOTE_A)))
+    fake_llm.queue("verdict_draft[claim 1]", verdict("UNVERIFIED", 30, missing=["extra q"]))
+    fake_llm.queue("verdict_jury[claim 1]", verdict("UNVERIFIED", 40, missing=["extra q"]))
+    fake_llm.queue("debate_assess[claim 1]", assess((2, "refutes", QUOTE_B)))
+    fake_llm.queue("final_ruling[claim 1]", verdict("FALSE", 80, cited=(2,)))
+
+    rec = await run(deps)
+
+    r = rec.claims[0].result
+    assert r.agreed and r.debated and r.rechecked
+    assert (r.draft.label, r.jury.label, r.final.label) == ("UNVERIFIED", "UNVERIFIED", "FALSE")
+    assert fake_search.queries[-1] == "extra q"  # deduplicated
+    final_call = next(c for c in fake_llm.calls if c["step"] == "final_ruling[claim 1]")
+    assert final_call["model"] == JUDGE
+    assert "both found the first evidence too weak" in final_call["user"]
+    assert QUOTE_A in final_call["user"] and QUOTE_B in final_call["user"]
+    types = [e["type"] for e in deps.events.history("chk1")]
+    assert "recheck_started" in types and "debate_started" not in types
+
+
+async def test_agreed_unverified_recheck_without_new_evidence_keeps_label(
+    deps, fake_llm, fake_search
+):
+    fake_search.default = [raw_result("https://a.com/x", PAGE_A, 0.9)]
+    fake_search.results["extra q"] = [raw_result("https://b.org/y", PAGE_B, 0.8)]
+    fake_llm.queue("extract_claims", ClaimExtraction(language="en", claims=[claim(1, "Wall")]))
+    queue_claim(fake_llm, 1, ("q1", "q2", "q3"), assess((1, "mixed", QUOTE_A)))
+    fake_llm.queue("verdict_draft[claim 1]", verdict("UNVERIFIED", 30, missing=["extra q"]))
+    fake_llm.queue("verdict_jury[claim 1]", verdict("UNVERIFIED", 40))
+    fake_llm.queue("debate_assess[claim 1]", assess((2, "irrelevant", "")))
+
+    rec = await run(deps)
+
+    r = rec.claims[0].result
+    assert r.agreed and r.rechecked and r.final.label == "UNVERIFIED"
+    assert r.final.confidence == 35
+    assert not any("final_ruling" in s for s in steps(fake_llm))
+    assert [e.source.id for e in rec.claims[0].evidence] == [1, 2]
+
+
+async def test_agreed_unverified_without_queries_stops(deps, fake_llm, fake_search):
+    fake_search.default = [raw_result("https://a.com/x", PAGE_A, 0.9)]
+    fake_llm.queue("extract_claims", ClaimExtraction(language="en", claims=[claim(1, "Wall")]))
+    queue_claim(fake_llm, 1, ("q1", "q2", "q3"), assess((1, "mixed", QUOTE_A)))
+    fake_llm.queue("verdict_draft[claim 1]", verdict("UNVERIFIED", 30))
+    fake_llm.queue("verdict_jury[claim 1]", verdict("UNVERIFIED", 40))
+
+    rec = await run(deps)
+
+    r = rec.claims[0].result
+    assert r.agreed and not r.debated and not r.rechecked
+    assert steps(fake_llm)[-2:] == ["verdict_draft[claim 1]", "verdict_jury[claim 1]"]
+
+
+async def test_failed_extra_search_still_gives_final_ruling(deps, fake_llm, fake_search):
+    fake_search.default = [raw_result("https://a.com/x", PAGE_A, 0.9)]
+    original = fake_search.search_web
+
+    async def search_web(query: str):
+        if query == "extra q":
+            raise RuntimeError("search down")
+        return await original(query)
+
+    fake_search.search_web = search_web
+    fake_llm.queue("extract_claims", ClaimExtraction(language="en", claims=[claim(1, "Wall")]))
+    queue_claim(fake_llm, 1, ("q1", "q2", "q3"), assess((1, "refutes", QUOTE_A)))
+    fake_llm.queue("verdict_draft[claim 1]", verdict("MISLEADING", 60, missing=["extra q"]))
+    fake_llm.queue("verdict_jury[claim 1]", verdict("FALSE", 70))
+    fake_llm.queue("final_ruling[claim 1]", verdict("FALSE", 75))
+
+    rec = await run(deps)
+
+    r = rec.claims[0].result
+    assert rec.status == "done" and r.final.label == "FALSE" and r.debated
+    assert [e.source.id for e in rec.claims[0].evidence] == [1]
+
+
+async def test_plan_queries_dedupes_and_passes_year(deps, fake_llm, fake_search):
+    fake_llm.queue("extract_claims", ClaimExtraction(language="en", claims=[claim(1, "Wall")]))
+    fake_llm.queue("plan_queries[claim 1]", queries("Great Wall", " great  wall ", "", "q3"))
+
+    rec = await run(deps)
+
+    assert [q.query for q in rec.claims[0].queries] == ["Great Wall", "q3", "Wall"]
+    plan_call = next(c for c in fake_llm.calls if c["step"] == "plan_queries[claim 1]")
+    assert "the year 2026" in plan_call["user"] and "{" not in plan_call["user"]
