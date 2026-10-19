@@ -72,7 +72,9 @@ async def run_jury(
     if extra:
         emit("debate_started", claim_id=claim_id, queries=extra)
         start = max((x.id for x in sources), default=0) + 1
-        new_sources = await find_sources(extra, deps, start_id=start, exclude=sources)
+        new_sources = await find_sources(
+            extra, deps, claim=claim_text, start_id=start, exclude=sources
+        )
         new_evidence = await assess_evidence(
             claim_text, new_sources, deps, trace, f"debate_assess[claim {claim_id}]"
         )

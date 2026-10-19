@@ -181,7 +181,7 @@ async def prepare(claim: ExtractedClaim, deps: Deps) -> Prepared:
     trace = Trace(prices=deps.settings.prices)
     t0 = time.perf_counter()
     queries = await plan_queries(claim, deps, trace)
-    sources = await find_sources([q.query for q in queries], deps)
+    sources = await find_sources([q.query for q in queries], deps, claim=claim.text)
     evidence: list[Evidence] = []
     settled = None
     if not sources:

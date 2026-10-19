@@ -154,7 +154,7 @@ async def _check_claim(
     queries = await plan_queries(claim, deps, trace)
     emit("queries_planned", claim_id=claim.id, queries=[q.query for q in queries])
 
-    sources = await find_sources([q.query for q in queries], deps)
+    sources = await find_sources([q.query for q in queries], deps, claim=claim.text)
     emit(
         "sources_found",
         claim_id=claim.id,

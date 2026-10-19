@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 Label = Literal["TRUE", "FALSE", "MISLEADING", "UNVERIFIED"]
 Stance = Literal["supports", "refutes", "mixed", "irrelevant"]
 Intent = Literal["neutral", "support", "refute"]
+Reliability = Literal["high", "medium", "low", "unknown"]
 
 
 # ---- LLM outputs ----
@@ -61,6 +62,8 @@ class Source(BaseModel):
     domain: str
     content: str  # text given to the model (trimmed to SOURCE_CHARS)
     favicon: str | None = None
+    published_date: str | None = None  # ISO date (YYYY-MM-DD) when the search result has one
+    reliability: Reliability = "unknown"  # domain tier from app/reliability.py
 
 
 class Evidence(BaseModel):

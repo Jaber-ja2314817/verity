@@ -15,10 +15,11 @@ async def find_sources(
     queries: list[str],
     deps: "Deps",
     *,
+    claim: str,
     start_id: int = 1,
     exclude: list[Source] | None = None,
 ) -> list[Source]:
-    """Run queries concurrently and merge them into numbered sources."""
+    """Run queries concurrently and merge them into numbered sources for this claim."""
     s = deps.settings
     results = await asyncio.gather(*(deps.search.search_web(q) for q in queries))
     return collect_sources(

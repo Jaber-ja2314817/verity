@@ -2,6 +2,7 @@
 export type Label = "TRUE" | "FALSE" | "MISLEADING" | "UNVERIFIED";
 export type Stance = "supports" | "refutes" | "mixed" | "irrelevant";
 export type Intent = "neutral" | "support" | "refute";
+export type Reliability = "high" | "medium" | "low" | "unknown";
 export type CheckStatus = "queued" | "running" | "done" | "error";
 
 export interface ExtractedClaim {
@@ -31,6 +32,8 @@ export interface Source {
   domain: string;
   content: string;
   favicon: string | null;
+  published_date?: string | null; // ISO date; missing on checks stored before it existed
+  reliability?: Reliability; // domain tier; missing on older checks
 }
 
 export interface Evidence {
