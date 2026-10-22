@@ -38,19 +38,6 @@ export function formatDate(iso: string): string {
   });
 }
 
-export function relativeTime(iso: string, now: number = Date.now()): string {
-  const t = new Date(iso).getTime();
-  if (Number.isNaN(t)) return "";
-  const s = Math.max(0, Math.round((now - t) / 1000));
-  if (s < 45) return "just now";
-  const m = Math.round(s / 60);
-  if (m < 60) return `${m} min ago`;
-  const h = Math.round(m / 60);
-  if (h < 24) return `${h} h ago`;
-  const d = Math.round(h / 24);
-  return d === 1 ? "1 day ago" : `${d} days ago`;
-}
-
 /** "nvidia/Nemotron-3-Ultra-550b-a55b" -> "Nemotron-3-Ultra-550b-a55b" */
 export function shortModel(model: string): string {
   return model.replace(/^nvidia\//i, "");
@@ -58,12 +45,25 @@ export function shortModel(model: string): string {
 
 /** "Please wait 412 seconds" -> "Please wait about 7 minutes" (rate-limit messages). */
 export function humanizeWait(message: string): string {
-  return message.replace(/\b(\d+) seconds?\b/, (m, n: string) => {
+  return message.replace(/\b(\d+) seconds?\b/, (_m, n: string) => {
     const s = Number(n);
-    if (s < 90) return m;
+    if (s < 90) return `${s} second${s === 1 ? "" : "s"}`;
     const mins = Math.ceil(s / 60);
     return `about ${mins} minute${mins === 1 ? "" : "s"}`;
   });
+}
+
+const PREVIEW_CHARS = 300; // backend input_preview holds only the first 300 characters
+
+/**
+ * The full text or URL the user submitted, or null when only a cut-off preview is stored
+ * (checks saved before `input` existed keep just the 300-character preview).
+ */
+export function fullInput(record: CheckRecord): string | null {
+  const full = record.input?.trim();
+  if (full) return full;
+  const preview = record.input_preview.trim();
+  return preview && preview.length < PREVIEW_CHARS ? preview : null;
 }
 
 const OUTCOME_TEXT = {

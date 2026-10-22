@@ -14,12 +14,30 @@ DAILY_CAP_MESSAGE = (
 )
 
 
-def client_ip(request: Request) -> str:
-    forwarded = request.headers.get("x-forwarded-for", "")
-    first = forwarded.split(",")[0].strip()
-    if first:
-        return first
+def client_ip(request: Request, trusted_hops: int = 1) -> str:
+    """The client address as seen by the outermost of `trusted_hops` proxies in front of us.
+
+    Each proxy appends the address it received the request from to X-Forwarded-For, so only
+    the last `trusted_hops` entries are trustworthy; anything to their left may be forged by
+    the client. 0 ignores the header. Fewer entries than hops: the leftmost one is used.
+    """
+    if trusted_hops > 0:
+        # Several X-Forwarded-For headers count as one comma-separated list (RFC 7230).
+        forwarded = ",".join(request.headers.getlist("x-forwarded-for"))
+        hops = [h.strip() for h in forwarded.split(",") if h.strip()]
+        if hops:
+            return _without_port(hops[-min(trusted_hops, len(hops))])
     return request.client.host if request.client else "unknown"
+
+
+def _without_port(addr: str) -> str:
+    """1.2.3.4:5678 -> 1.2.3.4 and [::1]:80 -> ::1; some proxies add the client's port, which
+    changes per connection and would give every request its own rate-limit key."""
+    if addr.startswith("[") and "]" in addr:
+        return addr[1 : addr.index("]")]
+    if addr.count(":") == 1:
+        return addr.split(":")[0]
+    return addr
 
 
 def seconds_until_utc_midnight(now: datetime | None = None) -> int:

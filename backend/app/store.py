@@ -120,12 +120,19 @@ class Store:
         row = await self._run(fn)
         return json.loads(row[0]) if row else None
 
-    async def cache_put(self, key: str, response: object) -> None:
+    async def cache_put(self, key: str, response: object, prune_hours: float | None = None) -> None:
+        """Store a response. With prune_hours, also delete entries older than that, so the
+        cache (up to ~250 KB of page text per query) does not grow without bound."""
+        now = utc_now()
+
         def fn():
+            if prune_hours is not None:
+                cutoff = (now - timedelta(hours=prune_hours)).isoformat()
+                self._conn.execute("DELETE FROM search_cache WHERE created_at < ?", (cutoff,))
             self._conn.execute(
                 "INSERT OR REPLACE INTO search_cache (key, created_at, response_json) "
                 "VALUES (?, ?, ?)",
-                (key, utc_now().isoformat(), json.dumps(response)),
+                (key, now.isoformat(), json.dumps(response)),
             )
             self._conn.commit()
 

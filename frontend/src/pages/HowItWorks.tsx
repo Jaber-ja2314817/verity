@@ -1,44 +1,24 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
 import { useTitle } from "../lib/useTitle";
 import type { Health } from "../types";
 
-const stroke = {
-  fill: "none",
-  stroke: "currentColor",
-  strokeWidth: 1.7,
-  strokeLinecap: "round" as const,
-  strokeLinejoin: "round" as const,
-};
-
-export const STEP_ICONS: Record<"claims" | "search" | "jury" | "verdict", ReactNode> = {
-  claims: (
-    <svg viewBox="0 0 24 24" className="h-6 w-6" aria-hidden {...stroke}>
-      <path d="M5 6h14M5 11h9M5 16h11" />
-      <circle cx="18.5" cy="16" r="1.4" />
-    </svg>
-  ),
-  search: (
-    <svg viewBox="0 0 24 24" className="h-6 w-6" aria-hidden {...stroke}>
-      <circle cx="10.5" cy="10.5" r="5.5" />
-      <path d="M15 15l4.5 4.5" />
-    </svg>
-  ),
-  jury: (
-    <svg viewBox="0 0 24 24" className="h-6 w-6" aria-hidden {...stroke}>
-      <circle cx="8" cy="8.5" r="2.6" />
-      <circle cx="16" cy="8.5" r="2.6" />
-      <path d="M3.5 18.5c.6-3 2.4-4.6 4.5-4.6s3.9 1.6 4.5 4.6M11.5 18.5c.6-3 2.4-4.6 4.5-4.6s3.9 1.6 4.5 4.6" />
-    </svg>
-  ),
-  verdict: (
-    <svg viewBox="0 0 24 24" className="h-6 w-6" aria-hidden {...stroke}>
-      <path d="M12 3.5l7 3v5c0 4.3-3 7.6-7 9-4-1.4-7-4.7-7-9v-5l7-3z" />
-      <path d="M8.8 12.2l2.2 2.2 4.2-4.4" />
-    </svg>
-  ),
-};
+const VERDICT_ICON = (
+  <svg
+    viewBox="0 0 24 24"
+    className="h-6 w-6"
+    aria-hidden
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.7}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M12 3.5l7 3v5c0 4.3-3 7.6-7 9-4-1.4-7-4.7-7-9v-5l7-3z" />
+    <path d="M8.8 12.2l2.2 2.2 4.2-4.4" />
+  </svg>
+);
 
 interface Stage {
   n: string;
@@ -148,7 +128,7 @@ export default function HowItWorks() {
 
   return (
     <article className="pt-6 sm:pt-12">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent-ink">How it works</p>
+      <p className="eyebrow text-accent">How it works</p>
       <h1 className="mt-3 max-w-3xl font-serif text-4xl leading-[1.1] tracking-tight sm:text-5xl">
         Every verdict shows its work.
       </h1>
@@ -177,8 +157,8 @@ export default function HowItWorks() {
             <p className="text-sm leading-relaxed text-muted">{s.body}</p>
           </li>
         ))}
-        <li className="flex flex-col justify-center gap-2 bg-ink p-5 text-paper sm:p-6">
-          <span className="text-accent">{STEP_ICONS.verdict}</span>
+        <li className="flex flex-col justify-center gap-2 bg-ink p-5 text-paper sm:p-6 lg:col-span-2">
+          <span className="text-accent">{VERDICT_ICON}</span>
           <h2 className="text-lg font-semibold">Verdict</h2>
           <p className="text-sm leading-relaxed opacity-80">
             True, False, Misleading or Unverified, with confidence, sources and the full model trace.

@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 from ..schemas import Evidence, JuryResult, Source, Verdict
 from ..trace import Trace
 from .evidence import assess_evidence, find_sources, usable
-from .ingest import load_prompt, render, system_prompt
+from .ingest import defuse, load_prompt, render, system_prompt
 from .verdict import post_check, render_evidence, verdict
 
 if TYPE_CHECKING:
@@ -44,21 +44,23 @@ async def _extra_round(
     trace: Trace,
 ) -> tuple[list[Source], list[Evidence], int]:
     """Search the reviewers' missing-evidence queries and assess only the new sources.
-    Returns extended sources and evidence plus the number of new usable items. A failed search
-    is logged and the check continues with the evidence it already has (no data is invented)."""
+    Returns extended sources and evidence plus the number of new usable items (a quote already
+    in the evidence, e.g. from a mirror site, is not new). A failed search or assessment is
+    logged and the check continues with the evidence it already has (no data is invented)."""
     start = max((x.id for x in sources), default=0) + 1
     try:
         new_sources = await find_sources(
             queries, deps, claim=claim_text, start_id=start, exclude=sources
         )
+        new_evidence = await assess_evidence(
+            claim_text, new_sources, deps, trace, f"debate_assess[claim {claim_id}]"
+        )
     except Exception:  # noqa: BLE001 - the extra round is optional; the claim must not fail
-        log.warning("claim %s: extra search failed; ruling on existing evidence", claim_id,
+        log.warning("claim %s: extra round failed; ruling on existing evidence", claim_id,
                     exc_info=True)  # fmt: skip
         return sources, evidence, 0
-    new_evidence = await assess_evidence(
-        claim_text, new_sources, deps, trace, f"debate_assess[claim {claim_id}]"
-    )
-    return sources + new_sources, evidence + new_evidence, len(usable(new_evidence))
+    new_usable = len(usable(evidence + new_evidence)) - len(usable(evidence))
+    return sources + new_sources, evidence + new_evidence, new_usable
 
 
 async def run_jury(
@@ -78,12 +80,17 @@ async def run_jury(
     Returns the result plus the (possibly extended) sources and evidence."""
     s = deps.settings
     good = usable(evidence)
-    draft, jury = await asyncio.gather(
-        verdict(claim_text, good, language, deps, trace,
-                model=s.model_fast, step=f"verdict_draft[claim {claim_id}]"),
-        verdict(claim_text, good, language, deps, trace,
-                model=s.model_judge, step=f"verdict_jury[claim {claim_id}]"),
-    )  # fmt: skip
+    calls = [
+        asyncio.ensure_future(verdict(claim_text, good, language, deps, trace,
+                              model=s.model_fast, step=f"verdict_draft[claim {claim_id}]")),
+        asyncio.ensure_future(verdict(claim_text, good, language, deps, trace,
+                              model=s.model_judge, step=f"verdict_jury[claim {claim_id}]")),
+    ]  # fmt: skip
+    try:
+        draft, jury = await asyncio.gather(*calls)
+    finally:
+        for call in calls:  # if one failed, stop the other instead of leaving it running
+            call.cancel()
     agreed = draft.label == jury.label
     emit(
         "verdicts_drafted",
@@ -149,14 +156,14 @@ async def final_ruling(
         load_prompt("final_ruling"),
         {
             "situation": situation,
-            "claim": claim_text,
+            "claim": defuse(claim_text),
             "all_evidence": render_evidence(good),
             "draft.label": draft.label,
             "draft.confidence": draft.confidence,
-            "draft.explanation": draft.explanation,
+            "draft.explanation": defuse(draft.explanation),
             "jury.label": jury.label,
             "jury.confidence": jury.confidence,
-            "jury.explanation": jury.explanation,
+            "jury.explanation": defuse(jury.explanation),
             "language": language,
         },
     )

@@ -1,4 +1,5 @@
-import { Link, NavLink, Route, Routes } from "react-router-dom";
+import { useEffect } from "react";
+import { Link, NavLink, Route, Routes, useLocation, useNavigationType } from "react-router-dom";
 import Footer from "./components/Footer";
 import Benchmark from "./pages/Benchmark";
 import CheckPage from "./pages/CheckPage";
@@ -39,6 +40,16 @@ function Header() {
   );
 }
 
+/** BrowserRouter keeps the old scroll position on navigation; start new pages at the top. */
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  const navType = useNavigationType();
+  useEffect(() => {
+    if (navType !== "POP") window.scrollTo(0, 0); // back/forward: let the browser restore
+  }, [pathname, navType]);
+  return null;
+}
+
 export default function App() {
   return (
     <div className="flex min-h-screen flex-col sm:m-1.5 sm:min-h-[calc(100vh-0.75rem)] bg-paper">
@@ -48,6 +59,7 @@ export default function App() {
       >
         Skip to content
       </a>
+      <ScrollToTop />
       <Header />
       <main id="main" tabIndex={-1} className="focus:outline-none mx-auto w-full max-w-[60rem] flex-1 px-4 pt-10 pb-16 sm:px-12">
         <Routes>

@@ -45,6 +45,16 @@ def system_prompt(today: str) -> str:
     return render(load_prompt("system_preamble"), {"today": today})
 
 
+# The tags the prompts wrap untrusted text in.
+_PROMPT_TAG = re.compile(r"<(/?)(source|claim|evidence|input|reviewer_[ab])", re.I)
+
+
+def defuse(text: str) -> str:
+    """Break prompt tags inside untrusted text ("</evidence>" -> "</ evidence>"), so web or
+    model text cannot fake the end of its block and pose as instructions."""
+    return _PROMPT_TAG.sub(r"<\1 \2", text)
+
+
 # ---- step 1: ingest ----
 def _page_title(markdown: str) -> str | None:
     for line in markdown.splitlines():

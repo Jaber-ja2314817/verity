@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     rate_limit_window_seconds: int = 600
     daily_check_cap: int = 150
     max_concurrent_checks: int = 3
+    # Proxies in front of the app that append to X-Forwarded-For; the client IP for the per-IP
+    # limit is the entry the outermost of them added. 0: ignore the header (no proxy).
+    trusted_proxy_hops: int = 1
 
     # Cost display (USD per 1M tokens)
     price_fast_in: float = 0.06
@@ -95,6 +98,17 @@ def startup_problems(s: Settings) -> list[str]:
     for name, value in [("MODEL_FAST", s.model_fast), ("MODEL_JUDGE", s.model_judge)]:
         if value and "nvidia" not in value.lower():
             problems.append(f"{name} must be an NVIDIA model (got {value!r})")
+    # Zero here would hang every check (no semaphore slot), fail it at once, or crash the limiter.
+    for name, value in [
+        ("MAX_CONCURRENT_CHECKS", s.max_concurrent_checks),
+        ("CHECK_TIMEOUT_SECONDS", s.check_timeout_seconds),
+        ("RATE_LIMIT_PER_IP", s.rate_limit_per_ip),
+        ("RATE_LIMIT_WINDOW_SECONDS", s.rate_limit_window_seconds),
+    ]:
+        if value < 1:
+            problems.append(f"{name} must be at least 1 (got {value})")
+    if s.trusted_proxy_hops < 0:
+        problems.append(f"TRUSTED_PROXY_HOPS must be 0 or more (got {s.trusted_proxy_hops})")
     return problems
 
 

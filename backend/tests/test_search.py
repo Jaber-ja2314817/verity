@@ -1,6 +1,7 @@
 from datetime import date
 
 import pytest
+from tavily.errors import ForbiddenError, InvalidAPIKeyError, UsageLimitExceededError
 
 from app import search as search_module
 from app.search import (
@@ -286,6 +287,21 @@ async def test_search_gives_up_after_second_transient_error(store, monkeypatch):
     with pytest.raises(search_module.SearchUnavailable, match="Web search failed"):
         await Search("k", store, client=client).search_web("q")
     assert len(client.search_calls) == 2
+
+
+async def test_search_retries_once_on_tavily_rate_limit(store, monkeypatch):
+    monkeypatch.setattr(search_module, "SEARCH_RETRY_DELAY_S", 0)
+    client = FlakyTavily([UsageLimitExceededError("rate limited")])
+    assert await Search("k", store, client=client).search_web("q") == []
+    assert len(client.search_calls) == 2
+
+
+@pytest.mark.parametrize("error", [ForbiddenError("plan limit"), InvalidAPIKeyError("bad key")])
+async def test_search_refusal_is_search_unavailable_without_retry(store, error):
+    client = FlakyTavily([error])
+    with pytest.raises(search_module.SearchUnavailable, match="Web search refused"):
+        await Search("k", store, client=client).search_web("q")
+    assert len(client.search_calls) == 1
 
 
 async def test_search_does_not_retry_other_errors(store):

@@ -1,13 +1,12 @@
 import asyncio
 import logging
-import re
 from typing import TYPE_CHECKING
 
 from ..quotes import find_quote, normalize
 from ..schemas import Evidence, EvidenceAssessment, Source, SourceAssessment
 from ..search import collect_sources, normalize_url
 from ..trace import Trace
-from .ingest import load_prompt, render, system_prompt
+from .ingest import defuse, load_prompt, render, system_prompt
 
 if TYPE_CHECKING:
     from .orchestrator import Deps
@@ -52,10 +51,10 @@ DOUBLE_QUOTES = str.maketrans({'"': "'", "\u201c": "'", "\u201d": "'"})
 def render_sources(sources: list[Source]) -> str:
     """Double quotes become single quotes: a model copying a quote containing " into a JSON
     string can break the JSON and degenerate. verify_quote ignores punctuation, so it still
-    matches the original source text. Source tags inside page text are defused so a page
+    matches the original source text. Prompt tags inside page text are defused so a page
     cannot fake the end of its own source block. "[...]" marks a gap between passages."""
     return "\n\n".join(
-        f'<source id="{x.id}" domain="{x.domain}" reliability="{x.reliability}"'
+        f'<source id="{x.id}" domain="{_defuse(x.domain)}" reliability="{x.reliability}"'
         + (f' published="{x.published_date}"' if x.published_date else "")
         + f' title="{_defuse(x.title)}">{_defuse(x.content)}</source>'
         for x in sources
@@ -63,7 +62,7 @@ def render_sources(sources: list[Source]) -> str:
 
 
 def _defuse(text: str) -> str:
-    return re.sub(r"<(/?)source", r"<\1 source", text.translate(DOUBLE_QUOTES), flags=re.I)
+    return defuse(text.translate(DOUBLE_QUOTES))
 
 
 async def assess_evidence(
@@ -71,14 +70,18 @@ async def assess_evidence(
 ) -> list[Evidence]:
     """One FAST call for all sources, plus one retry for sources the model left out (small
     models drop items from long lists). Quotes are matched to the exact source text in code;
-    sources still missing count as irrelevant."""
+    sources still missing count as irrelevant (also when the retry itself fails)."""
     if not sources:
         return []
     items = await _assess(claim_text, sources, deps, trace, step)
     missing = [x for x in sources if x.id not in {i.source_id for i in items}]
     if missing:
         log.warning("%s: model skipped sources %s, asking again", step, [x.id for x in missing])
-        items += await _assess(claim_text, missing, deps, trace, f"{step} retry")
+        try:
+            items += await _assess(claim_text, missing, deps, trace, f"{step} retry")
+        except Exception:  # noqa: BLE001 - the retry is optional; keep the first answer
+            log.warning("%s retry failed; skipped sources count as irrelevant", step,
+                        exc_info=True)  # fmt: skip
     by_id = {x.id: x for x in sources}
     seen: dict[int, Evidence] = {}
     for item in items:
@@ -113,7 +116,7 @@ async def _assess(
         user=render(
             load_prompt("assess_evidence"),
             {
-                "claim": claim_text,
+                "claim": defuse(claim_text),
                 "sources": render_sources(sources),
                 "count": len(sources),
                 "ids": ids,

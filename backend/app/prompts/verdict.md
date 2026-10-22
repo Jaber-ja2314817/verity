@@ -39,7 +39,7 @@ Guidance:
   "supports").
 - confidence (0-100) = how sure you are of the label given this evidence.
 - explanation: max 90 words, plain language, mention the key evidence. Write in language "{language}".
-- cited_source_ids: ids of the evidence items you relied on (must be from the list below).
+- cited_source_ids: ids of the evidence items you relied on (must be ids from the evidence).
 - missing_evidence_queries: if you chose UNVERIFIED or the evidence is weak or conflicting, up
   to 2 specific search queries that would settle it; otherwise [].
 

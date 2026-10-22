@@ -77,3 +77,11 @@ def test_usable_dedupes_mirrors_and_puts_reliable_sources_first():
         evidence(6, "refutes", "A medium source says something else here.", "medium"),
     ]
     assert [e.source.id for e in usable(ev)] == [3, 6, 2]
+
+
+async def test_failed_retry_keeps_first_answer(fake_llm, trace):
+    quote = "RMS Titanic sank in the North Atlantic Ocean on 15 April 1912."
+    fake_llm.queue("a", EvidenceAssessment(items=[item(1, "refutes", quote)]))
+    fake_llm.queue("a retry", RuntimeError("invalid output"))
+    ev = await assess_evidence("c", [src(1), src(2)], deps(fake_llm), trace, "a")
+    assert [(e.source.id, e.stance) for e in ev] == [(1, "refutes"), (2, "irrelevant")]

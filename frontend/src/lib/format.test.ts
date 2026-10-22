@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkToText, formatCost, humanizeWait, formatSeconds, formatTokens, relativeTime, shortModel } from "./format";
+import { checkToText, formatCost, fullInput, humanizeWait, formatSeconds, formatTokens, shortModel } from "./format";
 import type { CheckRecord } from "../types";
 
 describe("format", () => {
@@ -19,21 +19,28 @@ describe("format", () => {
     expect(formatSeconds(65)).toBe("1 min 5 s");
     expect(formatSeconds(120)).toBe("2 min");
   });
-  it("formats relative time", () => {
-    const now = Date.parse("2026-10-14T12:00:00Z");
-    expect(relativeTime("2026-10-14T11:59:50Z", now)).toBe("just now");
-    expect(relativeTime("2026-10-14T11:55:00Z", now)).toBe("5 min ago");
-    expect(relativeTime("2026-10-14T09:00:00Z", now)).toBe("3 h ago");
-    expect(relativeTime("2026-10-12T12:00:00Z", now)).toBe("2 days ago");
-    expect(relativeTime("nonsense", now)).toBe("");
-  });
   it("shortens model ids", () => {
     expect(shortModel("nvidia/Nemotron-3-Ultra-550b-a55b")).toBe("Nemotron-3-Ultra-550b-a55b");
   });
   it("humanizes long rate-limit waits", () => {
     expect(humanizeWait("Please wait 412 seconds and try again.")).toBe("Please wait about 7 minutes and try again.");
     expect(humanizeWait("Please wait 30 seconds and try again.")).toBe("Please wait 30 seconds and try again.");
+    expect(humanizeWait("Please wait 1 seconds and try again.")).toBe("Please wait 1 second and try again.");
     expect(humanizeWait("Try again tomorrow.")).toBe("Try again tomorrow.");
+  });
+  it("returns the full submitted input, or the preview only when it isn't cut off", () => {
+    const base: CheckRecord = {
+      id: "x", created_at: "2026-10-14T12:00:00Z", status: "error", input_type: "url",
+      input_preview: "", language: null, claims: [], skipped_claims: [], trace: [], totals: {}, error: "e",
+    };
+    const longUrl = `https://example.org/${"a".repeat(400)}`;
+    expect(fullInput({ ...base, input: longUrl, input_preview: longUrl.slice(0, 300) })).toBe(longUrl);
+    expect(fullInput({ ...base, input: "  Coffee stunts growth in kids.  ", input_preview: "x" })).toBe("Coffee stunts growth in kids.");
+    // Older records: "" or missing input falls back to a preview that wasn't truncated.
+    expect(fullInput({ ...base, input: "", input_preview: "Short claim text here." })).toBe("Short claim text here.");
+    expect(fullInput({ ...base, input_preview: "Short claim text here." })).toBe("Short claim text here.");
+    expect(fullInput({ ...base, input: "", input_preview: longUrl.slice(0, 300) })).toBeNull();
+    expect(fullInput({ ...base, input: "   ", input_preview: "  " })).toBeNull();
   });
   it("builds a plain-text summary with cited verified sources only", () => {
     const v = { label: "FALSE" as const, confidence: 88, explanation: "Not visible.", cited_source_ids: [1, 2], missing_evidence_queries: [] };

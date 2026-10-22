@@ -397,7 +397,12 @@ export function useCheck(id: string): UseCheck {
         } else {
           setMeta({
             loading: false,
-            loadError: e instanceof Error ? e.message : "Could not load this check.",
+            loadError:
+              e instanceof ApiError && e.status >= 500
+                ? "Verity is having trouble right now. Please try again in a moment."
+                : e instanceof Error
+                  ? e.message
+                  : "Could not load this check.",
           });
         }
       }

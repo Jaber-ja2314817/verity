@@ -83,7 +83,8 @@ export interface CheckRecord {
   created_at: string;
   status: CheckStatus;
   input_type: "text" | "url";
-  input_preview: string;
+  input_preview: string; // first 300 characters
+  input?: string; // full trimmed text or URL; "" (or missing) on checks stored before it existed
   language: string | null;
   claims: ClaimResult[];
   skipped_claims: ExtractedClaim[];

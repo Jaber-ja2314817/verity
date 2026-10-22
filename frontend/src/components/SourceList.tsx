@@ -154,9 +154,9 @@ export default function SourceList({ evidence, cited }: { evidence: Evidence[]; 
   return (
     <section aria-labelledby={headingId}>
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <h4 id={headingId} className="text-xs font-medium uppercase tracking-wide text-muted">
+        <h3 id={headingId} className="text-xs font-medium uppercase tracking-wide text-muted">
           Evidence
-        </h4>
+        </h3>
         {view.verified > 0 && (
           <p className="text-xs text-muted">
             {view.verified} verified quote{view.verified === 1 ? "" : "s"}
@@ -182,11 +182,11 @@ export default function SourceList({ evidence, cited }: { evidence: Evidence[]; 
               const s = STANCE[g.stance];
               return (
                 <div key={g.stance}>
-                  <h5 className={`flex items-center gap-2 text-[13px] font-semibold ${s.text}`}>
+                  <h4 className={`flex items-center gap-2 text-[13px] font-semibold ${s.text}`}>
                     <span aria-hidden className={`h-2 w-2 rounded-full ${s.dot}`} />
                     {s.title}
                     <span className="font-normal text-muted">({g.items.length})</span>
-                  </h5>
+                  </h4>
                   <ul className="mt-3 space-y-5">
                     {g.items.map((e) => (
                       <li key={e.source.id} className="min-w-0">

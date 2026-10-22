@@ -186,7 +186,7 @@ export default function Benchmark() {
 
   return (
     <article className="pt-6 sm:pt-12">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent-ink">Benchmark</p>
+      <p className="eyebrow text-accent">Benchmark</p>
       <h1 className="mt-3 max-w-3xl font-serif text-4xl leading-[1.1] tracking-tight sm:text-5xl">
         Measured, not claimed.
       </h1>
@@ -195,7 +195,7 @@ export default function Benchmark() {
       </p>
 
       {load.state === "loading" ? (
-        <div className="mt-10 grid gap-4 sm:grid-cols-2" aria-busy="true" aria-label="Loading benchmark">
+        <div role="status" className="mt-10 grid gap-4 sm:grid-cols-2" aria-busy="true" aria-label="Loading benchmark">
           {[0, 1].map((i) => (
             <div key={i} className="h-36 animate-pulse rounded-xl bg-line motion-reduce:animate-none" />
           ))}

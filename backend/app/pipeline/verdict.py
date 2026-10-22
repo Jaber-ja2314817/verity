@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING
 
 from ..schemas import Evidence, Verdict
 from ..trace import Trace
-from .ingest import load_prompt, render, system_prompt
+from .ingest import defuse, load_prompt, render, system_prompt
 
 if TYPE_CHECKING:
     from .orchestrator import Deps
@@ -24,14 +24,15 @@ def _evidence_line(e: Evidence) -> str:
     meta = [f"id {s.id}", e.stance, s.domain, f"reliability {s.reliability}"]
     if s.published_date:
         meta.append(f"published {s.published_date}")
-    title = " ".join(s.title.split())[:TITLE_CHARS].translate(DOUBLE_QUOTES)
-    quote = e.quote.translate(DOUBLE_QUOTES)
-    return f'[{" | ".join(meta)}] {title}\n  "{quote}" ({e.note})'
+    title = defuse(" ".join(s.title.split())[:TITLE_CHARS].translate(DOUBLE_QUOTES))
+    quote = defuse(e.quote.translate(DOUBLE_QUOTES))
+    return f'[{" | ".join(meta)}] {title}\n  "{quote}" ({defuse(e.note)})'
 
 
 def render_evidence(evidence: list[Evidence]) -> str:
     """One compact item per piece of evidence: id, stance, domain, reliability tier, published
-    date (when known) and title, then the verified quote and the assessor's note."""
+    date (when known) and title, then the verified quote and the assessor's note. Prompt tags
+    in the (web-derived) text are defused."""
     return "\n".join(_evidence_line(e) for e in evidence)
 
 
@@ -80,7 +81,11 @@ async def verdict(
         system=system_prompt(deps.today()),
         user=render(
             load_prompt("verdict"),
-            {"language": language, "claim": claim_text, "evidence": render_evidence(evidence)},
+            {
+                "language": language,
+                "claim": defuse(claim_text),
+                "evidence": render_evidence(evidence),
+            },
         ),
         schema=Verdict,
     )

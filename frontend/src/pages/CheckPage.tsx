@@ -6,18 +6,10 @@ import ShareButton from "../components/ShareButton";
 import TracePanel from "../components/TracePanel";
 import VerdictBadge from "../components/VerdictBadge";
 import { juryModels, skipInfo } from "../lib/claims";
-import { formatDate, formatSeconds } from "../lib/format";
+import { formatDate, formatSeconds, fullInput } from "../lib/format";
 import { currentStep, useCheck } from "../lib/useCheck";
 import { useTitle } from "../lib/useTitle";
 import type { CheckRecord, ClaimResult, ExtractedClaim } from "../types";
-
-const PREVIEW_CHARS = 300; // backend stores only the first 300 characters of the input
-
-/** Text to put back in the input box for "try again": only when we have all of it. */
-function retryText(record: CheckRecord): string | undefined {
-  const t = record.input_preview.trim();
-  return t && t.length < PREVIEW_CHARS ? t : undefined;
-}
 
 const button =
   "inline-flex items-center rounded-full bg-ink px-4 py-2 text-sm font-semibold text-paper hover:opacity-90";
@@ -61,20 +53,21 @@ function Notice({
 
 function Header({ record }: { record: CheckRecord }) {
   const isUrl = record.input_type === "url";
+  const url = isUrl ? (fullInput(record) ?? record.input_preview) : "";
   return (
     <header className="mb-6">
       <h1 className="text-xs font-medium uppercase tracking-wide text-muted">
         Fact-check · {formatDate(record.created_at)}
         {isUrl ? " · from a web page" : ""}
       </h1>
-      {isUrl && /^https?:\/\//i.test(record.input_preview) ? (
+      {isUrl && /^https?:\/\//i.test(url) ? (
         <a
-          href={record.input_preview}
+          href={url}
           target="_blank"
           rel="noopener noreferrer"
-          className="mt-3 block break-all border-l-2 border-line pl-4 font-serif text-lg leading-relaxed text-muted underline decoration-line underline-offset-4 hover:text-ink sm:text-xl"
+          className="mt-3 line-clamp-3 break-all border-l-2 border-line pl-4 font-serif text-lg leading-relaxed text-muted underline decoration-line underline-offset-4 hover:text-ink sm:text-xl"
         >
-          {record.input_preview}
+          {url}
           <span className="sr-only"> (opens in a new tab)</span>
         </a>
       ) : (
@@ -155,7 +148,7 @@ function CheckView({ id }: { id: string }) {
 
   if (loading)
     return (
-      <div className="mt-10 space-y-4" aria-busy="true" aria-label="Loading check">
+      <div role="status" className="mt-10 space-y-4" aria-busy="true" aria-label="Loading check">
         <div className="h-4 w-48 animate-pulse rounded bg-line motion-reduce:animate-none" />
         <div className="h-20 animate-pulse rounded-2xl bg-line/60 motion-reduce:animate-none" />
         <div className="h-40 animate-pulse rounded-2xl bg-line/60 motion-reduce:animate-none" />
@@ -183,7 +176,7 @@ function CheckView({ id }: { id: string }) {
   const pending = progress.claims.filter((c) => !finishedIds.has(c.id));
   const trace = record.trace.length ? record.trace : progress.trace;
   const totals = Object.keys(record.totals).length ? record.totals : progress.totals;
-  const retry = retryText(record);
+  const retry = fullInput(record); // put back in the input box for "try again" only when we have all of it
 
   return (
     <div>

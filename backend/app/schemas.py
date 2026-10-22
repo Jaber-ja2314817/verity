@@ -109,6 +109,7 @@ class CheckRecord(BaseModel):
     status: Literal["queued", "running", "done", "error"]
     input_type: Literal["text", "url"]
     input_preview: str  # first 300 chars
+    input: str = ""  # full trimmed text or URL as submitted ("" in records stored before this)
     language: str | None = None
     claims: list[ClaimResult] = []
     skipped_claims: list[ExtractedClaim] = []

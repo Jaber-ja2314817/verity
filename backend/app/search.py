@@ -9,6 +9,7 @@ from typing import Any, NotRequired, TypedDict
 from urllib.parse import urlsplit
 
 import httpx
+from tavily.errors import ForbiddenError, InvalidAPIKeyError, UsageLimitExceededError
 from tavily.errors import TimeoutError as TavilyTimeoutError
 
 from .reliability import domain_reliability
@@ -19,8 +20,16 @@ log = logging.getLogger(__name__)
 
 TAVILY_TIMEOUT_S = 30
 SEARCH_RETRY_DELAY_S = 1.5
-# asyncio.wait_for raises the builtin; the Tavily client raises its own on its timeout
-TRANSIENT_SEARCH_ERRORS = (TimeoutError, TavilyTimeoutError, httpx.TransportError)
+# asyncio.wait_for raises the builtin; the Tavily client raises its own on its timeout, and
+# UsageLimitExceededError on HTTP 429 (rate limit).
+TRANSIENT_SEARCH_ERRORS = (
+    TimeoutError,
+    TavilyTimeoutError,
+    UsageLimitExceededError,
+    httpx.TransportError,
+)
+# Retrying cannot help: bad key (401), plan or credit limit reached (403/432/433).
+FATAL_SEARCH_ERRORS = (InvalidAPIKeyError, ForbiddenError)
 EXTRACT_FAILED = "Could not read that page. Try pasting the text instead."
 RAW_CACHE_CHARS = 50_000  # cleaned page text kept per search result (cache size bound)
 PASSAGE_SEP = "\n[...]\n"
@@ -39,7 +48,8 @@ class RawResult(TypedDict):
 
 
 class SearchUnavailable(RuntimeError):
-    """Web search kept failing (timeouts/connection errors) after a retry."""
+    """Web search kept failing (timeouts/connection errors) after a retry, or Tavily refused
+    the key or the plan limit was reached."""
 
 
 class IngestError(Exception):
@@ -366,7 +376,7 @@ class Search:
         response = await self.store.cache_get(key, self.cache_hours)
         if response is None:
             response = _shrink(await self._search_with_retry(query, params))
-            await self.store.cache_put(key, response)
+            await self.store.cache_put(key, response, prune_hours=self.cache_hours)
         results = (response or {}).get("results") or []
         return [raw for r in results if isinstance(r, dict) and (raw := _to_raw(r))]
 
@@ -378,6 +388,9 @@ class Search:
                 return await asyncio.wait_for(
                     self.client.search(query=query, **params), TAVILY_TIMEOUT_S
                 )
+            except FATAL_SEARCH_ERRORS as e:
+                log.error("tavily search refused (%s): %s", type(e).__name__, e)
+                raise SearchUnavailable(f"Web search refused: {type(e).__name__}") from e
             except TRANSIENT_SEARCH_ERRORS as e:
                 if attempt:
                     raise SearchUnavailable(f"Web search failed: {type(e).__name__}") from e

@@ -194,3 +194,33 @@ async def test_run_all_skips_done_pairs(deps, fake_llm):
                                concurrency=2, on_record=seen.append)  # fmt: skip
     assert [(r["id"], r["mode"]) for r in records] == [("c01", "jury")]
     assert seen == records
+
+
+# ---- command line and output guards
+
+
+def test_write_outputs_can_leave_latest_alone(tmp_path):
+    s = ev.build_summary([rec("a", "single", "TRUE", "TRUE")], models={}, date="d",
+                         claims_total=1)  # fmt: skip
+    ev.write_outputs(s, [], tmp_path, "stamp", latest=False)
+    assert (tmp_path / "stamp.json").exists() and not (tmp_path / "latest.json").exists()
+
+
+def test_latest_only_for_full_runs_of_the_verified_claims(tmp_path):
+    assert ev.latest_skip_reason(ev.DEFAULT_CLAIMS, None, 40) is None
+    assert "--limit" in ev.latest_skip_reason(ev.DEFAULT_CLAIMS, 5, 5)
+    assert "no claim" in ev.latest_skip_reason(ev.DEFAULT_CLAIMS, None, 0)
+    assert "not eval/claims.jsonl" in ev.latest_skip_reason(ev.DRAFT_CLAIMS, None, 40)
+
+
+@pytest.mark.parametrize(
+    "argv, message",
+    [(["--concurrency", "0"], "--concurrency must be at least 1"),
+     (["--limit", "0"], "--limit must be at least 1"),
+     (["--resume", "/nonexistent/run_x.jsonl"], "--resume file not found"),
+     (["--claims", "/nonexistent/c.jsonl"], "Claims file not found"),
+     (["--claims", str(SCRIPT), "--modes", "single,both"], "--modes must be")],
+)  # fmt: skip
+def test_main_rejects_bad_arguments_before_any_work(argv, message, capsys):
+    assert ev.main(argv) == 1
+    assert message in capsys.readouterr().out

@@ -1,4 +1,5 @@
 import asyncio
+import json
 
 import pytest
 
@@ -29,6 +30,26 @@ async def test_check_roundtrip_and_upsert(store):
     assert (await store.get_check(cid)) == record(cid)
     await store.save_check(record(cid, "done"))
     assert (await store.get_check(cid)).status == "done"
+
+
+async def test_record_stored_before_input_field_still_loads(store):
+    old = record("old").model_dump()
+    del old["input"]
+    store._conn.execute(
+        "INSERT INTO checks (id, created_at, status, record_json) VALUES (?, ?, ?, ?)",
+        ("old", old["created_at"], "done", json.dumps(old)),
+    )
+    store._conn.commit()
+    loaded = await store.get_check("old")
+    assert loaded is not None and loaded.input == "" and loaded.input_preview == "hello"
+
+
+async def test_cache_put_prunes_expired_entries(store):
+    await store.cache_put("old", {"results": []})
+    store._conn.execute("UPDATE search_cache SET created_at = '2000-01-01T00:00:00+00:00'")
+    await store.cache_put("new", {"results": [2]}, prune_hours=24)
+    keys = [k for (k,) in store._conn.execute("SELECT key FROM search_cache")]
+    assert keys == ["new"]
 
 
 async def test_unknown_check_is_none(store):

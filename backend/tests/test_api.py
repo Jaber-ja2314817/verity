@@ -94,6 +94,26 @@ def test_valid_text_returns_202_and_starts_check(env):
     assert record["status"] == "queued"
     assert record["input_type"] == "text"
     assert record["input_preview"] == GOOD_TEXT
+    assert record["input"] == GOOD_TEXT
+
+
+def test_record_keeps_full_input_beyond_preview(tmp_path, fake_llm, fake_search):
+    store = Store(tmp_path)
+    app = create_app(
+        make_settings(tmp_path, max_input_chars=1000),
+        llm=fake_llm,
+        search=fake_search,
+        store=store,
+        events=EventBus(),
+        run_check=RecordingRunCheck(),
+    )
+    long_text = " ".join([GOOD_TEXT] * 10)
+    with TestClient(app) as client:
+        check_id = client.post("/api/checks", json={"text": f"\n{long_text} "}).json()["id"]
+        record = client.get(f"/api/checks/{check_id}").json()
+    store.close()
+    assert record["input"] == long_text and len(long_text) > 300
+    assert record["input_preview"] == long_text[:300]
 
 
 def test_valid_url_returns_202(env):
@@ -101,7 +121,8 @@ def test_valid_url_returns_202(env):
     r = client.post("/api/checks", json={"url": "https://example.com/article"})
     assert r.status_code == 202
     assert run_check.calls[0][1].url == "https://example.com/article"
-    assert client.get(f"/api/checks/{r.json()['id']}").json()["input_type"] == "url"
+    record = client.get(f"/api/checks/{r.json()['id']}").json()
+    assert record["input_type"] == "url" and record["input"] == "https://example.com/article"
 
 
 def test_unknown_check_returns_404(env):

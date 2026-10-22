@@ -82,44 +82,42 @@ export default function JuryStatus({ result, models = {} }: { result: JuryResult
           </svg>
         </span>
       </button>
-      {open && (
-        <div id={panelId} className="border-t border-line px-4 py-4">
-          {outcome === "settled" ? (
-            <p className="text-sm text-muted">
-              There was no verified evidence for the models to judge, so Verity set this verdict in
-              code instead of asking them to guess.
+      <div id={panelId} hidden={!open} className="border-t border-line px-4 py-4">
+        {outcome === "settled" ? (
+          <p className="text-sm text-muted">
+            There was no verified evidence for the models to judge, so Verity set this verdict in
+            code instead of asking them to guess.
+          </p>
+        ) : (
+          <>
+            <p className="mb-4 text-xs text-muted">
+              Two different NVIDIA Nemotron models read the same verified quotes in parallel,
+              without seeing each other's answer.
+              {outcome === "agreed" && " The final confidence is the average of both."}
+              {outcome === "rechecked" &&
+                (recheckRuled
+                  ? " Both said the evidence was too thin, so Verity searched for what they said was missing, then the judge model ruled on all the evidence."
+                  : " Both said the evidence was too thin, so Verity searched for what they said was missing. The extra search found nothing usable, so the verdict stays Unverified.")}
+              {outcome === "debated" &&
+                " Because they disagreed, Verity searched for the evidence they said was missing, then the judge model weighed both opinions and all the evidence."}
+              {outcome === "disagreed" &&
+                " Because they disagreed, the judge model weighed both opinions and all the evidence."}
             </p>
-          ) : (
-            <>
-              <p className="mb-4 text-xs text-muted">
-                Two different NVIDIA Nemotron models read the same verified quotes in parallel,
-                without seeing each other's answer.
-                {outcome === "agreed" && " The final confidence is the average of both."}
-                {outcome === "rechecked" &&
-                  (recheckRuled
-                    ? " Both said the evidence was too thin, so Verity searched for what they said was missing, then the judge model ruled on all the evidence."
-                    : " Both said the evidence was too thin, so Verity searched for what they said was missing. The extra search found nothing usable, so the verdict stays Unverified.")}
-                {outcome === "debated" &&
-                  " Because they disagreed, Verity searched for the evidence they said was missing, then the judge model weighed both opinions and all the evidence."}
-                {outcome === "disagreed" &&
-                  " Because they disagreed, the judge model weighed both opinions and all the evidence."}
-              </p>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Opinion title={`Draft · ${name(models.draft, "fast model")}`} verdict={result.draft} />
-                <Opinion title={`Jury · ${name(models.jury, "judge model")} (independent)`} verdict={result.jury} />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Opinion title={`Draft · ${name(models.draft, "fast model")}`} verdict={result.draft} />
+              <Opinion title={`Jury · ${name(models.jury, "judge model")} (independent)`} verdict={result.jury} />
+            </div>
+            {showFinal && (
+              <div className="mt-4 border-t border-line pt-4">
+                <Opinion
+                  title={`Final ruling · ${name(models.final ?? models.jury, "judge model")}`}
+                  verdict={result.final}
+                />
               </div>
-              {showFinal && (
-                <div className="mt-4 border-t border-line pt-4">
-                  <Opinion
-                    title={`Final ruling · ${name(models.final ?? models.jury, "judge model")}`}
-                    verdict={result.final}
-                  />
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }

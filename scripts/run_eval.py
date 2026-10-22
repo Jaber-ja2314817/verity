@@ -10,6 +10,10 @@ Usage (from the repo root):
   .venv/bin/python scripts/run_eval.py [--limit N] [--modes single,jury] [--concurrency 2]
       [--claims eval/claims.jsonl] [--resume eval/results/run_X.jsonl]
 
+eval/results/latest.json (served by the app) and latest.md are only updated by a full run of
+eval/claims.jsonl (no --limit) with at least one result; other runs write only their own
+run_*.jsonl and <timestamp>.json files.
+
 Never edit results by hand. Report whatever the numbers are.
 """
 
@@ -305,12 +309,37 @@ def load_records(path: Path) -> list[dict]:
     return [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines() if x.strip()]
 
 
-def write_outputs(summary: dict, records: list[dict], results_dir: Path, stamp: str) -> None:
+def write_outputs(
+    summary: dict, records: list[dict], results_dir: Path, stamp: str, *, latest: bool = True
+) -> None:
     results_dir.mkdir(parents=True, exist_ok=True)
     full = {**summary, "records": records}
     (results_dir / f"{stamp}.json").write_text(json.dumps(full, indent=2), encoding="utf-8")
-    (results_dir / "latest.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
-    (results_dir / "latest.md").write_text(render_markdown(summary), encoding="utf-8")
+    if latest:
+        (results_dir / "latest.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+        (results_dir / "latest.md").write_text(render_markdown(summary), encoding="utf-8")
+
+
+def latest_skip_reason(claims_path: Path, limit: int | None, n: int) -> str | None:
+    """Why this run must not replace the published latest.json/latest.md, or None."""
+    if claims_path.resolve() != DEFAULT_CLAIMS.resolve():
+        return f"claims file is not {DEFAULT_CLAIMS.relative_to(ROOT)}"
+    if limit is not None:
+        return "--limit was used"
+    if n == 0:
+        return "no claim was evaluated without an error"
+    return None
+
+
+def arg_problems(args: argparse.Namespace) -> list[str]:
+    problems = []
+    if args.limit is not None and args.limit < 1:
+        problems.append("--limit must be at least 1")
+    if args.concurrency < 1:
+        problems.append("--concurrency must be at least 1")
+    if args.resume is not None and not args.resume.exists():
+        problems.append(f"--resume file not found: {args.resume}")
+    return problems
 
 
 def make_deps(settings: Settings) -> Deps:
@@ -339,24 +368,27 @@ def make_deps(settings: Settings) -> Deps:
     )
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument("--claims", type=Path, default=DEFAULT_CLAIMS)
     p.add_argument("--limit", type=int, default=None)
     p.add_argument("--modes", default="single,jury")
     p.add_argument("--concurrency", type=int, default=2)
     p.add_argument("--resume", type=Path, default=None, help="run_*.jsonl file to continue")
-    args = p.parse_args()
+    args = p.parse_args(argv)
 
+    if problems := arg_problems(args):
+        print("\n".join(problems))
+        return 1
     if not args.claims.exists():
-        if args.claims == DEFAULT_CLAIMS:
+        if args.claims.resolve() == DEFAULT_CLAIMS.resolve():
             print(f"{DEFAULT_CLAIMS.relative_to(ROOT)} not found.\n"
                   f"Verify every label in {DRAFT_CLAIMS.relative_to(ROOT)} (see "
                   "eval/VERIFY_CLAIMS.md), then save it as eval/claims.jsonl.")  # fmt: skip
         else:
             print(f"Claims file not found: {args.claims}")
         return 1
-    modes = [m.strip() for m in args.modes.split(",") if m.strip()]
+    modes = list(dict.fromkeys(m.strip() for m in args.modes.split(",") if m.strip()))
     if not modes or any(m not in MODES for m in modes):
         print(f"--modes must be a comma list of: {', '.join(MODES)}")
         return 1
@@ -367,7 +399,11 @@ def main() -> int:
         print("Cannot run the benchmark:\n  " + "\n  ".join(problems))
         return 1
 
-    claims = load_claims(args.claims)[: args.limit]
+    try:
+        claims = load_claims(args.claims)[: args.limit]
+    except ValueError as e:  # includes bad JSON lines
+        print(f"Invalid claims file: {e}")
+        return 1
     stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     run_file = args.resume or RESULTS_DIR / f"run_{stamp}.jsonl"
     previous = [r for r in load_records(run_file) if not r.get("error")]  # errors are retried
@@ -400,8 +436,11 @@ def main() -> int:
         date=datetime.now(UTC).date().isoformat(),
         claims_total=len(claims),
     )
-    write_outputs(summary, records, RESULTS_DIR, stamp)
+    skip = latest_skip_reason(args.claims, args.limit, summary["n"])
+    write_outputs(summary, records, RESULTS_DIR, stamp, latest=skip is None)
     print("\n" + render_markdown(summary))
+    if skip:
+        print(f"latest.json/latest.md NOT updated ({skip}); results in {stamp}.json.")
     errors = sum(1 for r in records if r["error"])
     if errors:
         print(f"{errors} results had errors. Re-run with --resume {run_file} to retry them.")

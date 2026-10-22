@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
+from starlette.requests import Request
 
 from app.events import EventBus
 from app.main import create_app
@@ -11,6 +12,7 @@ from app.ratelimit import (
     RateLimiter,
     RateLimitExceeded,
     SlidingWindow,
+    client_ip,
     seconds_until_utc_midnight,
 )
 from app.store import Store
@@ -39,8 +41,11 @@ def make_client(tmp_path, fake_llm, fake_search):
         s.close()
 
 
-def post(client, ip: str | None = None):
-    headers = {"X-Forwarded-For": f"{ip}, 10.0.0.1"} if ip else {}
+def post(client, ip: str | None = None, forwarded: str | None = None):
+    """ip: the address the trusted proxy appended, after a client-supplied (forgeable) entry."""
+    if forwarded is None and ip:
+        forwarded = f"6.6.6.6, {ip}"
+    headers = {"X-Forwarded-For": forwarded} if forwarded else {}
     return client.post("/api/checks", json={"text": GOOD_TEXT}, headers=headers)
 
 
@@ -77,6 +82,44 @@ def test_x_forwarded_for_identifies_client(make_client):
         assert post(client, "1.1.1.1").status_code == 202
         assert post(client, "1.1.1.1").status_code == 429
         assert post(client, "2.2.2.2").status_code == 202
+
+
+def test_forged_leading_x_forwarded_for_entries_do_not_change_the_key(make_client):
+    with make_client(rate_limit_per_ip=1) as client:
+        assert post(client, forwarded="1.1.1.1").status_code == 202
+        assert post(client, forwarded="2.2.2.2, 1.1.1.1").status_code == 429
+        assert post(client, forwarded="3.3.3.3, 4.4.4.4, 1.1.1.1").status_code == 429
+
+
+def test_zero_trusted_hops_ignores_x_forwarded_for(make_client):
+    with make_client(rate_limit_per_ip=1, trusted_proxy_hops=0) as client:
+        assert post(client, "1.1.1.1").status_code == 202
+        assert post(client, "2.2.2.2").status_code == 429  # same peer: the test client
+
+
+def _request(*forwarded: str, peer: str = "9.9.9.9") -> Request:
+    headers = [(b"x-forwarded-for", f.encode()) for f in forwarded]
+    return Request({"type": "http", "headers": headers, "client": (peer, 1234)})
+
+
+@pytest.mark.parametrize(
+    "forwarded, hops, expected",
+    [
+        (["1.1.1.1"], 1, "1.1.1.1"),
+        (["6.6.6.6, 1.1.1.1"], 1, "1.1.1.1"),
+        (["6.6.6.6, 1.1.1.1, 10.0.0.2"], 2, "1.1.1.1"),
+        (["1.1.1.1"], 3, "1.1.1.1"),  # fewer entries than hops: the leftmost
+        (["6.6.6.6", "1.1.1.1"], 1, "1.1.1.1"),  # several headers are one list
+        (["6.6.6.6, 1.1.1.1:51234"], 1, "1.1.1.1"),
+        (["[2001:db8::1]:443"], 1, "2001:db8::1"),
+        (["2001:db8::1"], 1, "2001:db8::1"),
+        (["1.1.1.1"], 0, "9.9.9.9"),
+        ([" , "], 1, "9.9.9.9"),
+        ([], 1, "9.9.9.9"),
+    ],
+)
+def test_client_ip_counts_trusted_hops_from_the_right(forwarded, hops, expected):
+    assert client_ip(_request(*forwarded), hops) == expected
 
 
 def test_sliding_window_expires_old_hits():

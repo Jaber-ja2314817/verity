@@ -1,7 +1,7 @@
 """One real end-to-end check against a running Verity (local or deployed).
 
 Usage: python scripts/smoke_test.py [--url http://localhost:8000]
-Exits non-zero if the check fails or times out.
+Exits non-zero if the check fails, times out or finds no claim to check.
 """
 
 import argparse
@@ -23,12 +23,22 @@ def request(method: str, url: str, body: dict | None = None) -> dict:
     )
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
-            return json.loads(resp.read().decode())
+            body_text = resp.read().decode(errors="replace")
     except urllib.error.HTTPError as e:
         detail = e.read().decode(errors="replace")[:300]
         raise SystemExit(f"{method} {url} -> HTTP {e.code}: {detail}") from None
     except urllib.error.URLError as e:
         raise SystemExit(f"{method} {url} -> cannot connect: {e.reason}") from None
+    except TimeoutError:
+        raise SystemExit(f"{method} {url} -> no response within 30 s") from None
+    except ValueError as e:  # e.g. a --url without http:// or https://
+        raise SystemExit(f"{method} {url} -> bad URL: {e}") from None
+    try:
+        return json.loads(body_text)
+    except ValueError:
+        raise SystemExit(
+            f"{method} {url} -> not a JSON reply (is this the Verity API?): {body_text[:200]!r}"
+        ) from None
 
 
 def main() -> int:
@@ -65,7 +75,8 @@ def main() -> int:
 
     claims = record.get("claims", [])
     if not claims:
-        print("No checkable claims found.")
+        print("FAIL: no checkable claims found (the test sentence has one).")
+        return 1
     for claim in claims:
         result = claim["result"]
         verified = sum(1 for e in claim["evidence"] if e["quote_verified"])

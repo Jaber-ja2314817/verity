@@ -44,7 +44,7 @@ const TIPS: { good: string; bad?: string; why: string }[] = [
 
 function Tips() {
   return (
-    <details className="group border-t border-line px-6 py-3">
+    <details className="group border-t border-line px-4 py-3 sm:px-6">
       <summary className="cursor-pointer list-none text-xs text-muted hover:text-ink [&::-webkit-details-marker]:hidden">
         <span aria-hidden className="mr-1.5 inline-block transition-transform group-open:rotate-90">›</span>
         How to phrase a checkable claim

@@ -69,7 +69,7 @@ export function ClaimSkeleton({ claim }: { claim: ClaimProgress }) {
   return (
     <article className="rounded-2xl border border-line bg-surface p-5 sm:p-6" aria-busy="true">
       <p className="mb-1 font-mono text-xs text-muted">Claim {claim.id}</p>
-      <p className="font-serif text-lg leading-snug sm:text-xl">{claim.text || "…"}</p>
+      <h2 className="font-serif text-lg leading-snug sm:text-xl">{claim.text || "…"}</h2>
       <div className="mt-4 flex items-center gap-2 text-sm text-muted">
         <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-accent motion-reduce:animate-none" />
         {claim.stage === "debating" && claim.rechecked
@@ -96,9 +96,9 @@ export default function ClaimCard({ claim, models }: { claim: ClaimResult; model
         <p className="font-mono text-xs text-muted">Claim {claim.id}</p>
         <VerdictBadge label={v.label} />
       </div>
-      <p id={`claim-${claim.id}-text`} className="mt-2 font-serif text-lg leading-snug sm:text-xl">
+      <h2 id={`claim-${claim.id}-text`} className="mt-2 font-serif text-lg leading-snug sm:text-xl">
         {claim.text}
-      </p>
+      </h2>
       <div className="mt-4">
         {v.label === "UNVERIFIED" ? <UnverifiedNote verdict={v} /> : <ConfidenceBar value={v.confidence} label={v.label} />}
       </div>

@@ -189,7 +189,7 @@ def create_app(
         except ValueError as e:
             return JSONResponse({"detail": str(e)}, status_code=400)
 
-        ip = client_ip(request)
+        ip = client_ip(request, state.settings.trusted_proxy_hops)
         try:
             await state.limiter.acquire(ip)
         except RateLimitExceeded as e:
@@ -199,12 +199,14 @@ def create_app(
                 headers={"Retry-After": str(e.retry_after)},
             )
 
+        submitted = req.text or req.url or ""
         record = CheckRecord(
             id=new_id(),
             created_at=utc_now().isoformat(),
             status="queued",
             input_type="text" if req.text else "url",
-            input_preview=(req.text or req.url or "")[:300],
+            input_preview=submitted[:300],
+            input=submitted,
         )
         await state.store.save_check(record)
 

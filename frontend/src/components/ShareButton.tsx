@@ -60,7 +60,11 @@ export default function ShareButton({ record }: { record: CheckRecord }) {
       >
         Copy as text
       </button>
-      <span role="status" aria-live="polite" className="text-sm text-accent-ink">
+      <span
+        role="status"
+        aria-live="polite"
+        className={`text-sm ${status === "Copy failed" ? "text-v-false" : "text-accent-ink"}`}
+      >
         {status}
       </span>
     </div>

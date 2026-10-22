@@ -19,6 +19,7 @@ def test_defaults_match_env_example():
     assert s.max_claims == 3 and s.tavily_search_depth == "basic"
     assert s.structured_mode_fast == "tool_forced"
     assert s.nebius_base_url == "https://api.tokenfactory.nebius.com/v1/"
+    assert s.trusted_proxy_hops == 1
 
 
 def test_valid_settings_have_no_problems():
@@ -36,6 +37,24 @@ def test_same_models_rejected():
 
 def test_non_nvidia_model_rejected():
     assert any("NVIDIA" in p for p in startup_problems(settings(model_judge="meta/llama")))
+
+
+@pytest.mark.parametrize(
+    "kw, name",
+    [
+        ({"max_concurrent_checks": 0}, "MAX_CONCURRENT_CHECKS"),
+        ({"check_timeout_seconds": 0}, "CHECK_TIMEOUT_SECONDS"),
+        ({"rate_limit_per_ip": 0}, "RATE_LIMIT_PER_IP"),
+        ({"rate_limit_window_seconds": -1}, "RATE_LIMIT_WINDOW_SECONDS"),
+        ({"trusted_proxy_hops": -1}, "TRUSTED_PROXY_HOPS"),
+    ],
+)
+def test_unusable_limits_rejected(kw, name):
+    assert any(p.startswith(name) for p in startup_problems(settings(**kw)))
+
+
+def test_zero_proxy_hops_and_zero_daily_cap_are_allowed():
+    assert startup_problems(settings(trusted_proxy_hops=0, daily_check_cap=0)) == []
 
 
 def test_trace_totals_and_unknown_price():
