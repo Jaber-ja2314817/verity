@@ -19,4 +19,5 @@ COPY --from=web /web/dist ./app/static
 RUN useradd -m verity && mkdir -p /data && chown -R verity /data /app
 USER verity
 EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--proxy-headers", "--forwarded-allow-ips", "*"]
+# Hosts like Render tell the app which port to listen on through $PORT.
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1 --proxy-headers --forwarded-allow-ips '*'"]
