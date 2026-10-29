@@ -13,3 +13,5 @@ backend/app/static/
 eval/results/run_*.jsonl
 .vercel/
 backend/eval/
+.env*
+!.env.example
