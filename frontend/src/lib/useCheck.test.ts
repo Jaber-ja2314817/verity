@@ -14,6 +14,13 @@ function run(events: CheckAction[], start: CheckState = initialState): CheckStat
 }
 
 describe("checkReducer", () => {
+  it("marks a queued check running at its first progress event", () => {
+    let s = run([{ type: "snapshot", record: record({ status: "queued" }) }, { type: "ping" }]);
+    expect(s.record?.status).toBe("queued");
+    s = run([{ type: "ingest_done", chars: 100 }], s);
+    expect(s.record?.status).toBe("running");
+  });
+
   it("walks one claim through every stage", () => {
     let s = run([{ type: "snapshot", record: record() }]);
     expect(currentStep(s)).toBe(0);

@@ -127,7 +127,14 @@ function sameCall(a: TraceEntry, b: TraceEntry): boolean {
   );
 }
 
+const NOT_PROGRESS = new Set<CheckAction["type"]>(["snapshot", "record", "ping", "done", "error"]);
+
 export function checkReducer(state: CheckState, action: CheckAction): CheckState {
+  // The record is only re-sent at the end, so the first progress event is what says the check
+  // has left the queue (a check started in this tab holds its "queued" snapshot until then).
+  if (state.record?.status === "queued" && !NOT_PROGRESS.has(action.type)) {
+    state = { ...state, record: { ...state.record, status: "running" } };
+  }
   const p = state.progress;
   switch (action.type) {
     case "snapshot":
