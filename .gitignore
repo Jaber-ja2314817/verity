@@ -12,3 +12,4 @@ eval/results/*.json
 backend/app/static/
 eval/results/run_*.jsonl
 .vercel/
+backend/eval/

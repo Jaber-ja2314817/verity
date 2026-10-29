@@ -181,8 +181,10 @@ def create_app(
             "version": os.environ.get("GIT_SHA", "dev"),
         }
 
-    @app.post("/api/checks", status_code=202)
-    async def create_check(body: CheckRequest, request: Request):
+    async def admit(
+        body: CheckRequest, request: Request
+    ) -> tuple[CheckRecord, CheckRequest] | JSONResponse:
+        """Validate, rate-limit and save a new check. A JSONResponse means it was refused."""
         state = request.app.state
         try:
             req = validate_check_request(body, state.settings.max_input_chars)
@@ -209,13 +211,63 @@ def create_app(
             input=submitted,
         )
         await state.store.save_check(record)
+        return record, req
 
+    def start(state: Any, record: CheckRecord, req: CheckRequest) -> None:
         coro = state.run_check(record.id, req, state.deps)
         task = asyncio.create_task(_guarded(coro, state, record.id))
         state.tasks.add(task)
         task.add_done_callback(state.tasks.discard)
         log.info("check %s queued (%s)", record.id, record.input_type)
-        return {"id": record.id}
+
+    @app.post("/api/checks", status_code=202)
+    async def create_check(body: CheckRequest, request: Request):
+        admitted = await admit(body, request)
+        if isinstance(admitted, JSONResponse):
+            return admitted
+        start(request.app.state, *admitted)
+        return {"id": admitted[0].id}
+
+    @app.post("/api/checks/stream")
+    async def create_check_stream(body: CheckRequest, request: Request):
+        """Like POST /api/checks, but the check runs inside this request and its events stream
+        back, ending with the full record. For serverless hosts (Vercel): work left running after
+        a response may be paused, and a later request may reach an instance without this check."""
+        admitted = await admit(body, request)
+        if isinstance(admitted, JSONResponse):
+            return admitted
+        record, req = admitted
+        state = request.app.state
+
+        async def stream() -> AsyncIterator[str]:
+            bus: EventBus = state.events
+            queue = bus.subscribe(record.id)  # before the check starts, so no event is missed
+            try:
+                start(state, record, req)
+                yield _sse({"type": "snapshot", "record": record.model_dump()})
+                while True:
+                    try:
+                        event = await asyncio.wait_for(queue.get(), KEEP_ALIVE_SECONDS)
+                    except TimeoutError:
+                        yield _sse(PING)
+                        continue
+                    if event.get("type") in TERMINAL:
+                        # The pipeline saves the record before its terminal event; send it so
+                        # the client needs no follow-up request (it may reach another instance).
+                        final = await state.store.get_check(record.id)
+                        if final is not None:
+                            yield _sse({"type": "record", "record": final.model_dump()})
+                        yield _sse(event)
+                        return
+                    yield _sse(event)
+            finally:
+                bus.unsubscribe(record.id, queue)
+
+        return StreamingResponse(
+            stream(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     @app.get("/api/checks/{check_id}")
     async def get_check(check_id: str, request: Request):

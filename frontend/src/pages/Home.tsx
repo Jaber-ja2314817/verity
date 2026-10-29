@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { api, ApiError } from "../api";
 import InputBox, { detectMode, validateInput } from "../components/InputBox";
 import { humanizeWait } from "../lib/format";
+import { startCheck } from "../lib/liveChecks";
 import { useTitle } from "../lib/useTitle";
 import type { Example } from "../types";
 
@@ -73,7 +74,7 @@ export default function Home() {
     setError(null);
     try {
       const body = detectMode(v) === "url" ? { url: v } : { text: v };
-      const { id } = await api.createCheck(body);
+      const id = await startCheck(body);
       navigate(`/c/${id}`);
     } catch (e) {
       setError(friendly(e));

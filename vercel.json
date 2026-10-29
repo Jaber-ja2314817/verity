@@ -4,6 +4,7 @@
     "backend": {
       "root": "backend",
       "framework": "fastapi",
+      "buildCommand": "mkdir -p eval/results && cp ../eval/results/latest.json eval/results/ || true",
       "functions": {
         "app/main.py": { "maxDuration": 300 }
       }

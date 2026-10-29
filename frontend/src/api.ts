@@ -14,12 +14,14 @@ export class ApiError extends Error {
 // VITE_API_URL points the client at another backend, e.g. http://localhost:8000.
 const API_BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "");
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+const UNREACHABLE = "Can't reach Verity. Check your connection and try again.";
+
+async function send(path: string, init?: RequestInit): Promise<Response> {
   let res: Response;
   try {
     res = await fetch(API_BASE + path, init);
   } catch {
-    throw new ApiError("Can't reach Verity. Check your connection and try again.", 0);
+    throw new ApiError(UNREACHABLE, 0);
   }
   if (!res.ok) {
     let message = `Request failed (${res.status}).`;
@@ -32,6 +34,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const retry = Number(res.headers.get("Retry-After"));
     throw new ApiError(message, res.status, Number.isFinite(retry) && retry > 0 ? retry : undefined);
   }
+  return res;
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await send(path, init);
   return res.json() as Promise<T>;
 }
 
@@ -40,12 +47,17 @@ export const api = {
   examples: () => request<Example[]>("/api/examples"),
   benchmark: () => request<Benchmark>("/api/benchmark"),
   getCheck: (id: string) => request<CheckRecord>(`/api/checks/${encodeURIComponent(id)}`),
-  createCheck: (body: CheckRequest) =>
-    request<{ id: string }>("/api/checks", {
+  /** Start a check that runs inside this request; the response is its event stream. */
+  startCheck: async (body: CheckRequest, signal?: AbortSignal): Promise<ReadableStream<Uint8Array>> => {
+    const res = await send("/api/checks/stream", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
       body: JSON.stringify(body),
-    }),
+      signal,
+    });
+    if (!res.body) throw new ApiError(UNREACHABLE, 0);
+    return res.body;
+  },
   eventsUrl: (id: string) => `${API_BASE}/api/checks/${encodeURIComponent(id)}/events`,
 };
 

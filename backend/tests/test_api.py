@@ -252,6 +252,78 @@ def test_sse_running_check_streams_live_events(tmp_path, fake_llm, fake_search):
     assert bus._subscribers == {}
 
 
+def _stream_app(tmp_path, fake_llm, fake_search, run_check, **settings):
+    store, bus = Store(tmp_path), EventBus()
+    app = create_app(
+        make_settings(tmp_path, **settings),
+        llm=fake_llm,
+        search=fake_search,
+        store=store,
+        events=bus,
+        run_check=run_check,
+    )
+    return app, store, bus
+
+
+def _post_stream(client, body) -> list[dict]:
+    events = []
+    with client.stream("POST", "/api/checks/stream", json=body) as r:
+        assert r.status_code == 200
+        assert r.headers["content-type"].startswith("text/event-stream")
+        for line in r.iter_lines():
+            if line.startswith("data: "):
+                events.append(json.loads(line[6:]))
+    return events
+
+
+def test_stream_runs_check_in_request_and_ends_with_record(tmp_path, fake_llm, fake_search):
+    async def run_check(check_id, req, deps):
+        deps.events.emit(check_id, "claims_found", claims=[], skipped=0, language="en")
+        record = await deps.store.get_check(check_id)
+        record.status = "done"
+        record.totals = {"model_calls": 1}
+        await deps.store.save_check(record)
+        deps.events.emit(check_id, "done", totals=record.totals)
+
+    app, store, bus = _stream_app(tmp_path, fake_llm, fake_search, run_check)
+    with TestClient(app) as client:
+        events = _post_stream(client, {"text": GOOD_TEXT})
+    store.close()
+    assert [e["type"] for e in events] == ["snapshot", "claims_found", "record", "done"]
+    assert events[0]["record"]["status"] == "queued"
+    assert events[0]["record"]["input"] == GOOD_TEXT
+    assert events[2]["record"]["id"] == events[0]["record"]["id"]
+    assert events[2]["record"]["status"] == "done"
+    assert bus._subscribers == {}
+
+
+def test_stream_crashed_check_ends_with_error(tmp_path, fake_llm, fake_search):
+    async def run_check(check_id, req, deps):
+        raise RuntimeError("boom")
+
+    app, store, _ = _stream_app(tmp_path, fake_llm, fake_search, run_check)
+    with TestClient(app) as client:
+        events = _post_stream(client, {"text": GOOD_TEXT})
+    store.close()
+    assert [e["type"] for e in events] == ["snapshot", "record", "error"]
+    assert events[1]["record"]["status"] == "error"
+
+
+def test_stream_refusals_are_plain_json(tmp_path, fake_llm, fake_search):
+    app, store, _ = _stream_app(
+        tmp_path, fake_llm, fake_search, RecordingRunCheck(), rate_limit_per_ip=1
+    )
+    with TestClient(app) as client:
+        bad = client.post("/api/checks/stream", json={"text": "too short"})
+        assert bad.status_code == 400
+        assert "detail" in bad.json()
+        assert client.post("/api/checks", json={"text": GOOD_TEXT}).status_code == 202
+        limited = client.post("/api/checks/stream", json={"text": GOOD_TEXT})
+        assert limited.status_code == 429
+        assert limited.headers["Retry-After"]
+    store.close()
+
+
 def test_import_safe_without_keys(monkeypatch):
     for key in ("NEBIUS_API_KEY", "TAVILY_API_KEY", "MODEL_FAST", "MODEL_JUDGE"):
         monkeypatch.delenv(key, raising=False)

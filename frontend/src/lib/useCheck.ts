@@ -1,5 +1,6 @@
 import { useEffect, useReducer } from "react";
 import { api, ApiError } from "../api";
+import { followLive } from "./liveChecks";
 import type {
   CheckEvent,
   CheckRecord,
@@ -284,6 +285,18 @@ export function useCheck(id: string): UseCheck {
   });
   useEffect(() => {
     let cancelled = false;
+    // Started in this tab: its own stream has everything, no request needed.
+    const unfollow = followLive(id, (action) => {
+      if (!cancelled) dispatch(action);
+    });
+    if (unfollow) {
+      setMeta({ loading: false });
+      return () => {
+        cancelled = true;
+        unfollow();
+      };
+    }
+
     let source: EventSource | null = null;
     let watchdog: ReturnType<typeof setTimeout> | undefined;
     let poller: ReturnType<typeof setInterval> | undefined;
