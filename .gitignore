@@ -11,3 +11,4 @@ eval/results/*.json
 !eval/results/latest.json
 backend/app/static/
 eval/results/run_*.jsonl
+.vercel/

@@ -1,3 +1,4 @@
+import os
 from functools import lru_cache
 from typing import Literal
 
@@ -58,8 +59,8 @@ class Settings(BaseSettings):
     price_judge_in: float = 1.0
     price_judge_out: float = 3.0
 
-    # App
-    data_dir: str = "./data"
+    # App (on Vercel only /tmp is writable, and it does not outlive the instance)
+    data_dir: str = "/tmp/verity" if os.environ.get("VERCEL") else "./data"
     log_level: str = "INFO"
 
     @property

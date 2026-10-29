@@ -10,10 +10,14 @@ export class ApiError extends Error {
   }
 }
 
+// Same-origin /api by default (Vite dev proxy locally, Vercel rewrite in production).
+// VITE_API_URL points the client at another backend, e.g. http://localhost:8000.
+const API_BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "");
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(path, init);
+    res = await fetch(API_BASE + path, init);
   } catch {
     throw new ApiError("Can't reach Verity. Check your connection and try again.", 0);
   }
@@ -42,7 +46,7 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }),
-  eventsUrl: (id: string) => `/api/checks/${encodeURIComponent(id)}/events`,
+  eventsUrl: (id: string) => `${API_BASE}/api/checks/${encodeURIComponent(id)}/events`,
 };
 
 export const GITHUB_URL = "https://github.com/Jaber-ja2314817/verity";
