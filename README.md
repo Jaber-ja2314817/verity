@@ -4,7 +4,7 @@
 that are verified against their sources and a jury of two NVIDIA Nemotron models.**
 
 - **Live demo:** https://verity-six-kappa.vercel.app
-- **Video:** _link coming_
+- **Video:** https://youtu.be/8Rp1KGfvxZM?si=J5ipQd2UCAO7FjVJ
 - Built for the Nebius x NVIDIA Global AI Hackathon (track: Best Apps and Agents).
 
 ## What it does
