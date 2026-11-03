@@ -53,6 +53,15 @@ class Settings(BaseSettings):
     check_timeout_seconds: int = 240
     search_cache_hours: int = 24
 
+    # Public API (/v1)
+    # Postgres (e.g. Neon) connection string. Empty: use the local SQLite file in DATA_DIR.
+    database_url: str = ""
+    # Secret for the key-management endpoints under /api/admin. Empty: those endpoints are off.
+    admin_secret: str = ""
+    api_default_rate_per_minute: int = 10
+    api_default_daily_quota: int = 100
+    api_wait_seconds: int = 120  # how long POST /v1/checks?wait=true holds the connection
+
     # Protection
     rate_limit_per_ip: int = 5
     rate_limit_window_seconds: int = 600
@@ -119,6 +128,8 @@ def startup_problems(s: Settings) -> list[str]:
             problems.append(f"{name} must be at least 1 (got {value})")
     if s.news_provider and not s.news_api_key.strip():
         problems.append("NEWS_API_KEY is not set (NEWS_PROVIDER is set)")
+    if s.admin_secret and len(s.admin_secret) < 24:
+        problems.append("ADMIN_SECRET must be at least 24 characters (or empty to turn it off)")
     if s.trusted_proxy_hops < 0:
         problems.append(f"TRUSTED_PROXY_HOPS must be 0 or more (got {s.trusted_proxy_hops})")
     return problems

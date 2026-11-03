@@ -1,4 +1,13 @@
-import type { Benchmark, CheckRecord, CheckRequest, Example, Health } from "./types";
+import type {
+  AdminKey,
+  Benchmark,
+  CheckRecord,
+  CheckRequest,
+  CreatedKey,
+  Example,
+  Health,
+  NewKey,
+} from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -59,6 +68,24 @@ export const api = {
     return res.body;
   },
   eventsUrl: (id: string) => `${API_BASE}/api/checks/${encodeURIComponent(id)}/events`,
+};
+
+const adminAuth = (secret: string) => ({ Authorization: `Bearer ${secret}` });
+
+/** Key management. The admin secret is sent per request and never stored by the server's UI. */
+export const adminApi = {
+  list: (secret: string) => request<AdminKey[]>("/api/admin/keys", { headers: adminAuth(secret) }),
+  create: (secret: string, body: NewKey) =>
+    request<CreatedKey>("/api/admin/keys", {
+      method: "POST",
+      headers: { ...adminAuth(secret), "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  revoke: (secret: string, id: string) =>
+    request<{ revoked: boolean }>(`/api/admin/keys/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      headers: adminAuth(secret),
+    }),
 };
 
 export const GITHUB_URL = "https://github.com/Jaber-ja2314817/verity";

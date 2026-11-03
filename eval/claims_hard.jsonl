@@ -1,0 +1,24 @@
+{"id": "h01", "claim": "Marie Curie won Nobel Prizes in both Physics and Chemistry.", "label": "TRUE", "evidence_url": "https://en.wikipedia.org/wiki/Marie_Curie", "kind": "hard"}
+{"id": "h02", "claim": "Alexander Fleming discovered penicillin in 1928 and shared the 1945 Nobel Prize in Physiology or Medicine with Howard Florey and Ernst Chain.", "label": "TRUE", "evidence_url": "https://en.wikipedia.org/wiki/Alexander_Fleming", "kind": "hard"}
+{"id": "h03", "claim": "Octopuses have three hearts.", "label": "TRUE", "evidence_url": "https://en.wikipedia.org/wiki/Octopus", "kind": "hard"}
+{"id": "h04", "claim": "Bananas are classified as berries in botany.", "label": "TRUE", "evidence_url": "https://en.wikipedia.org/wiki/Berry", "kind": "hard"}
+{"id": "h05", "claim": "Venus rotates in the opposite direction to most planets in the Solar System.", "label": "TRUE", "evidence_url": "https://en.wikipedia.org/wiki/Venus", "kind": "hard"}
+{"id": "h06", "claim": "The speed of light in a vacuum is 299,792,458 metres per second.", "label": "TRUE", "evidence_url": "https://en.wikipedia.org/wiki/Speed_of_light", "kind": "hard"}
+{"id": "h07", "claim": "Qatar hosted the 2022 FIFA World Cup, the first World Cup held in the Arab world.", "label": "TRUE", "evidence_url": "https://en.wikipedia.org/wiki/2022_FIFA_World_Cup", "kind": "hard"}
+{"id": "h08", "claim": "Argentina beat France on penalties in the 2022 FIFA World Cup final.", "label": "TRUE", "evidence_url": "https://en.wikipedia.org/wiki/2022_FIFA_World_Cup_final", "kind": "hard"}
+{"id": "h09", "claim": "Mount Everest's height was officially set at 8,848.86 metres in a 2020 survey by Nepal and China.", "label": "TRUE", "evidence_url": "https://en.wikipedia.org/wiki/Mount_Everest", "kind": "hard"}
+{"id": "h10", "claim": "The Los Angeles Dodgers beat the Toronto Blue Jays in Game 7 of the 2025 World Series.", "label": "TRUE", "evidence_url": "https://www.skysports.com/baseball/news/12040/13462358/la-dodgers-beat-toronto-blue-jays-5-4-in-thrilling-world-series-decider-to-become-first-repeat-mlb-champions-in-25-years", "kind": "hard"}
+{"id": "h11", "claim": "Pope Leo XIV, elected in May 2025, is the first pope born in the United States.", "label": "TRUE", "evidence_url": "https://en.wikipedia.org/wiki/Pope_Leo_XIV", "kind": "hard"}
+{"id": "h12", "claim": "Lightning can strike the same place more than once.", "label": "TRUE", "evidence_url": "https://en.wikipedia.org/wiki/Lightning", "kind": "hard"}
+{"id": "h13", "claim": "Marie Curie was born in France and won Nobel Prizes in both Physics and Chemistry.", "label": "FALSE", "evidence_url": "https://en.wikipedia.org/wiki/Marie_Curie", "kind": "hard"}
+{"id": "h14", "claim": "Humans use only 10 percent of their brains.", "label": "FALSE", "evidence_url": "https://en.wikipedia.org/wiki/Ten_percent_of_the_brain_myth", "kind": "hard"}
+{"id": "h15", "claim": "Goldfish have a memory of only three seconds.", "label": "FALSE", "evidence_url": "https://en.wikipedia.org/wiki/Goldfish", "kind": "hard"}
+{"id": "h16", "claim": "Different areas of the tongue are responsible for tasting sweet, sour, salty and bitter.", "label": "FALSE", "evidence_url": "https://en.wikipedia.org/wiki/Tongue_map", "kind": "hard"}
+{"id": "h17", "claim": "Strawberries are classified as berries in botany.", "label": "FALSE", "evidence_url": "https://en.wikipedia.org/wiki/Strawberry", "kind": "hard"}
+{"id": "h18", "claim": "The speed of light in a vacuum is about 150,000 kilometres per second.", "label": "FALSE", "evidence_url": "https://en.wikipedia.org/wiki/Speed_of_light", "kind": "hard"}
+{"id": "h19", "claim": "Qatar hosted the 2018 FIFA World Cup.", "label": "FALSE", "evidence_url": "https://en.wikipedia.org/wiki/2018_FIFA_World_Cup", "kind": "hard"}
+{"id": "h20", "claim": "France beat Argentina on penalties in the 2022 FIFA World Cup final.", "label": "FALSE", "evidence_url": "https://en.wikipedia.org/wiki/2022_FIFA_World_Cup_final", "kind": "hard"}
+{"id": "h21", "claim": "The Great Barrier Reef is located off the coast of Western Australia.", "label": "FALSE", "evidence_url": "https://en.wikipedia.org/wiki/Great_Barrier_Reef", "kind": "hard"}
+{"id": "h22", "claim": "The Toronto Blue Jays won the 2025 World Series.", "label": "FALSE", "evidence_url": "https://www.skysports.com/baseball/news/12040/13462358/la-dodgers-beat-toronto-blue-jays-5-4-in-thrilling-world-series-decider-to-become-first-repeat-mlb-champions-in-25-years", "kind": "hard"}
+{"id": "h23", "claim": "Pope Francis was born in the United States.", "label": "FALSE", "evidence_url": "https://en.wikipedia.org/wiki/Pope_Francis", "kind": "hard"}
+{"id": "h24", "claim": "The Great Wall of China is visible from space with the naked eye and was built entirely during the Ming dynasty.", "label": "FALSE", "evidence_url": "https://en.wikipedia.org/wiki/Great_Wall_of_China", "kind": "hard"}

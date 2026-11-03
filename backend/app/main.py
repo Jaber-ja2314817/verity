@@ -11,6 +11,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 
+from .api_v1 import create_admin_router, create_v1_app
 from .config import Settings, get_settings, startup_problems
 from .events import TERMINAL, EventBus
 from .llm import LLM
@@ -20,7 +21,7 @@ from .pipeline.orchestrator import Deps
 from .ratelimit import RateLimiter, RateLimitExceeded, client_ip
 from .schemas import CheckRecord, CheckRequest, validate_check_request
 from .search import Search
-from .store import Store, new_id, utc_now
+from .store import Store, make_store, new_id, utc_now
 
 log = logging.getLogger("verity")
 
@@ -118,7 +119,8 @@ def create_app(
             problems = startup_problems(s)
             if problems:
                 raise RuntimeError("Verity cannot start: " + "; ".join(problems))
-        st = store or Store(s.data_dir)
+        st = store or make_store(s.data_dir, s.database_url)
+        await st.init()
         app.state.settings = s
         app.state.store = st
         app.state.events = events or EventBus()
@@ -155,19 +157,26 @@ def create_app(
         )
         app.state.run_check = run_check or orchestrator.run_check
         app.state.tasks = set()  # strong references, so running checks are not GC'd
-        stale = await st.fail_unfinished(INTERRUPTED_MESSAGE)
+        app.state.active_ids = set()  # ids of the checks running in this process
+        # With a shared database another instance may be running a young check right now.
+        stale_age = 2 * s.check_timeout_seconds if s.database_url else 0
+        stale = await st.fail_unfinished(INTERRUPTED_MESSAGE, older_than_s=stale_age)
         if stale:
             log.warning("marked %d unfinished checks from a previous run as failed", len(stale))
         log.info("Verity started (fast=%s, judge=%s)", s.model_fast, s.model_judge)
         yield
         tasks = list(app.state.tasks)
+        mine = list(app.state.active_ids)
         for task in tasks:
             task.cancel()
         if tasks:
             await asyncio.wait(tasks, timeout=SHUTDOWN_GRACE_SECONDS)
-            await st.fail_unfinished(INTERRUPTED_MESSAGE)
+            if s.database_url:  # shared database: only fail this process's own checks
+                await st.fail_checks(mine, INTERRUPTED_MESSAGE)
+            else:
+                await st.fail_unfinished(INTERRUPTED_MESSAGE)
         if store is None:
-            st.close()
+            await st.aclose()
 
     app = FastAPI(title="Verity", lifespan=lifespan)
 
@@ -222,7 +231,12 @@ def create_app(
         task = asyncio.create_task(_guarded(coro, state, record.id))
         state.tasks.add(task)
         task.add_done_callback(state.tasks.discard)
+        state.active_ids.add(record.id)
+        task.add_done_callback(lambda _: state.active_ids.discard(record.id))
         log.info("check %s queued (%s)", record.id, record.input_type)
+
+    app.mount("/v1", create_v1_app(lambda: app.state, start))
+    app.include_router(create_admin_router(lambda: app.state))
 
     @app.post("/api/checks", status_code=202)
     async def create_check(body: CheckRequest, request: Request):
@@ -276,14 +290,15 @@ def create_app(
     @app.get("/api/checks/{check_id}")
     async def get_check(check_id: str, request: Request):
         record = await request.app.state.store.get_check(check_id)
-        if record is None:
+        if record is None or record.api_key_id:  # API checks are private to their key
             return JSONResponse({"detail": "Check not found."}, status_code=404)
         return record
 
     @app.get("/api/checks/{check_id}/events")
     async def check_events(check_id: str, request: Request):
         state = request.app.state
-        if await state.store.get_check(check_id) is None:
+        found = await state.store.get_check(check_id)
+        if found is None or found.api_key_id:
             return JSONResponse({"detail": "Check not found."}, status_code=404)
 
         async def stream() -> AsyncIterator[str]:

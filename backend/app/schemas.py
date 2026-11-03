@@ -124,6 +124,7 @@ class CheckRecord(BaseModel):
     trace: list[TraceEntry] = []
     totals: dict = {}  # tokens, cost_usd, duration_s, model_calls
     error: str | None = None
+    api_key_id: str | None = None  # set for checks made through the API: they stay private
 
 
 class CheckRequest(BaseModel):

@@ -109,3 +109,49 @@ async def test_fail_unfinished_marks_only_open_checks(store):
     a, c = await store.get_check("a"), await store.get_check("c")
     assert (a.status, a.error) == ("error", "restarted")
     assert c.status == "done"
+
+
+async def test_api_keys_are_stored_hashed_revoked_and_counted(store):
+    from app.apikeys import ApiKey, hash_key
+
+    key = ApiKey(id="k1", name="N", prefix="vrt_abcdef", created_at="2026-11-03T00:00:00+00:00",
+                 rate_per_minute=5, daily_quota=2)  # fmt: skip
+    await store.create_api_key(key, hash_key("vrt_secret"))
+    assert await store.get_api_key_by_hash(hash_key("vrt_secret")) == key
+    assert await store.get_api_key_by_hash(hash_key("vrt_other")) is None
+    assert [k.id for k in await store.list_api_keys()] == ["k1"]
+
+    assert await store.try_increment_key_daily("k1", 2, day="d")
+    assert await store.try_increment_key_daily("k1", 2, day="d")
+    assert not await store.try_increment_key_daily("k1", 2, day="d")  # at the cap
+    assert await store.key_daily_count("k1", day="d") == 2
+    await store.refund_key_daily("k1", day="d")
+    assert await store.key_daily_count("k1", day="d") == 1
+    assert await store.try_increment_key_daily("k1", 2, day="d2")  # another day starts at 0
+    assert not await store.try_increment_key_daily("k1", 0, day="d3")
+
+    assert await store.revoke_api_key("k1") is True
+    assert await store.revoke_api_key("k1") is False  # already revoked
+    revoked = await store.get_api_key_by_hash(hash_key("vrt_secret"))
+    assert revoked is not None and revoked.revoked_at is not None
+
+
+async def test_fail_checks_marks_only_the_given_open_checks(store):
+    await store.save_check(record("a", "running"))
+    await store.save_check(record("b", "running"))
+    await store.save_check(record("c", "done"))
+    assert await store.fail_checks(["a", "c", "missing"], "restarted") == ["a"]
+    assert (await store.get_check("a")).status == "error"
+    assert (await store.get_check("b")).status == "running"
+    assert (await store.get_check("c")).status == "done"
+
+
+async def test_fail_unfinished_can_leave_young_checks_alone(store):
+    from app.store import utc_now
+
+    old = record("old", "running")
+    young = record("young", "running")
+    young.created_at = utc_now().isoformat()
+    await store.save_check(old)
+    await store.save_check(young)
+    assert await store.fail_unfinished("restarted", older_than_s=600) == ["old"]

@@ -56,3 +56,11 @@ The benchmark is only worth something if every label is correct, so a person mus
 | c38 | The Sun orbits the Earth.                                                           | FALSE | [link](https://en.wikipedia.org/wiki/Heliocentrism)                               | [ ]       |
 | c39 | Viking warriors wore horned helmets in battle.                                      | FALSE | [link](https://en.wikipedia.org/wiki/Horned_helmet)                               | [ ]       |
 | c40 | Bats are blind.                                                                     | FALSE | [link](https://en.wikipedia.org/wiki/Bat)                                         | [ ]       |
+
+## Harder set: `eval/claims_hard.jsonl`
+
+24 claims (12 TRUE, 12 FALSE) that the 46-claim set does not cover: compound claims where one
+part is wrong (h13, h24), popular misconceptions (h14-h17), exact numbers (h06, h09, h18),
+near-miss events (h19, h20, h22), and recent events (h10, h11, h22, h23). Labels were written
+from well-established facts; open each evidence link once before you trust the numbers.
+Run it with `scripts/run_eval.py --claims eval/claims_hard.jsonl` (never updates latest.json).

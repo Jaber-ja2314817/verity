@@ -135,3 +135,25 @@ export type CheckEvent =
   | { type: "done"; totals: Totals }
   | { type: "ping" } // keep-alive, every few seconds
   | { type: "error"; message: string };
+
+// Admin endpoints (/api/admin/keys), used by the /admin page.
+export interface AdminKey {
+  id: string;
+  name: string;
+  prefix: string; // first characters of the key, to tell keys apart
+  created_at: string;
+  revoked_at: string | null;
+  rate_per_minute: number;
+  daily_quota: number;
+  used_today?: number; // list only
+}
+
+export interface CreatedKey extends AdminKey {
+  key: string; // the full key; returned once, never again
+}
+
+export interface NewKey {
+  name: string;
+  rate_per_minute?: number;
+  daily_quota?: number;
+}

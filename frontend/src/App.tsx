@@ -1,8 +1,10 @@
 import { useEffect } from "react";
 import { Link, NavLink, Route, Routes, useLocation, useNavigationType } from "react-router-dom";
 import Footer from "./components/Footer";
+import Admin from "./pages/Admin";
 import Benchmark from "./pages/Benchmark";
 import CheckPage from "./pages/CheckPage";
+import Developers from "./pages/Developers";
 import Home from "./pages/Home";
 import HowItWorks from "./pages/HowItWorks";
 import NotFound from "./pages/NotFound";
@@ -29,6 +31,10 @@ function Header() {
           <span aria-hidden>/</span>
           <NavLink to="/benchmark" className={nav}>
             Benchmark
+          </NavLink>
+          <span aria-hidden>/</span>
+          <NavLink to="/developers" className={nav}>
+            API
           </NavLink>
         </nav>
       </div>
@@ -67,6 +73,8 @@ export default function App() {
           <Route path="/c/:id" element={<CheckPage />} />
           <Route path="/how-it-works" element={<HowItWorks />} />
           <Route path="/benchmark" element={<Benchmark />} />
+          <Route path="/developers" element={<Developers />} />
+          <Route path="/admin" element={<Admin />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>

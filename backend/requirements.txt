@@ -5,3 +5,4 @@ tavily-python==0.8.5
 pydantic==2.14.1
 pydantic-settings==2.15.0
 python-dotenv==1.2.4
+psycopg[binary,pool]>=3.2,<4  # Postgres (Neon); only used when DATABASE_URL is set
