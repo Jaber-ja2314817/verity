@@ -6,6 +6,8 @@ Label = Literal["TRUE", "FALSE", "MISLEADING", "UNVERIFIED"]
 Stance = Literal["supports", "refutes", "mixed", "irrelevant"]
 Intent = Literal["neutral", "support", "refute"]
 Reliability = Literal["high", "medium", "low", "unknown"]
+SearchMode = Literal["auto", "news", "web"]
+SearchRoute = Literal["web", "news", "mixed"]
 
 
 # ---- LLM outputs ----
@@ -28,6 +30,11 @@ class PlannedQuery(BaseModel):
 
 class QueryPlan(BaseModel):
     queries: list[PlannedQuery]
+    time_sensitive: bool = Field(
+        default=False,
+        description="True if the claim is about a recent or ongoing event (news), false if it "
+        "is a settled fact",
+    )
 
 
 class SourceAssessment(BaseModel):
@@ -92,6 +99,7 @@ class ClaimResult(BaseModel):
     queries: list[PlannedQuery]
     evidence: list[Evidence]
     result: JuryResult
+    search: SearchRoute = "web"  # where the sources came from (missing on older checks)
 
 
 class TraceEntry(BaseModel):
@@ -121,6 +129,7 @@ class CheckRecord(BaseModel):
 class CheckRequest(BaseModel):
     text: str | None = None
     url: str | None = None  # exactly one of text/url must be set
+    mode: SearchMode = "auto"  # auto: news for recent events; news: always; web: never
 
 
 MIN_TEXT_CHARS = 20
@@ -138,9 +147,9 @@ def validate_check_request(req: CheckRequest, max_input_chars: int) -> CheckRequ
             raise ValueError(f"Text is too short (minimum {MIN_TEXT_CHARS} characters).")
         if len(text) > max_input_chars:
             raise ValueError(f"Text is too long (maximum {max_input_chars} characters).")
-        return CheckRequest(text=text)
+        return CheckRequest(text=text, mode=req.mode)
     if not url.startswith(("http://", "https://")):
         raise ValueError("URL must start with http:// or https://.")
     if len(url) > MAX_URL_CHARS:
         raise ValueError(f"URL is too long (maximum {MAX_URL_CHARS} characters).")
-    return CheckRequest(url=url)
+    return CheckRequest(url=url, mode=req.mode)

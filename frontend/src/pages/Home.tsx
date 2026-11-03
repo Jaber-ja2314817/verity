@@ -5,7 +5,7 @@ import InputBox, { detectMode, validateInput } from "../components/InputBox";
 import { humanizeWait } from "../lib/format";
 import { startCheck } from "../lib/liveChecks";
 import { useTitle } from "../lib/useTitle";
-import type { Example } from "../types";
+import type { Example, SearchMode } from "../types";
 
 const FALLBACK_EXAMPLES: Example[] = [
   { title: "Boiling point", type: "text", value: "Water always boils at 100°C." },
@@ -64,6 +64,18 @@ export default function Home() {
       alive = false;
     };
   }, []);
+  const [newsAvailable, setNewsAvailable] = useState(false);
+  const [searchMode, setSearchMode] = useState<SearchMode>("auto");
+  useEffect(() => {
+    let alive = true;
+    api
+      .health()
+      .then((h) => alive && setNewsAvailable(h.news_search === true))
+      .catch(() => undefined); // no toggle; the server then searches the web
+    return () => {
+      alive = false;
+    };
+  }, []);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -73,7 +85,8 @@ export default function Home() {
     setSubmitting(true);
     setError(null);
     try {
-      const body = detectMode(v) === "url" ? { url: v } : { text: v };
+      const base = detectMode(v) === "url" ? { url: v } : { text: v };
+      const body = newsAvailable ? { ...base, mode: searchMode } : base;
       const id = await startCheck(body);
       navigate(`/c/${id}`);
     } catch (e) {
@@ -107,6 +120,9 @@ export default function Home() {
           error={error}
           onSubmit={() => investigate(value)}
           autoFocus={typeof prefill === "string"}
+          newsAvailable={newsAvailable}
+          searchMode={searchMode}
+          onSearchModeChange={setSearchMode}
         />
         <div className="mt-6 flex flex-wrap items-baseline gap-x-4 gap-y-2 text-xs">
           <span className="uppercase tracking-[0.08em] text-muted">Explore a sample</span>

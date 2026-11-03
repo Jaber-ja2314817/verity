@@ -8,22 +8,32 @@ from typing import Any
 
 from ..config import Settings
 from ..events import EventBus
+from ..news import NewsUnavailable
 from ..schemas import (
     CheckRecord,
     CheckRequest,
     ClaimResult,
     ExtractedClaim,
     JuryResult,
+    SearchMode,
+    SearchRoute,
+    Source,
     Verdict,
 )
 from ..search import IngestError, SearchUnavailable
 from ..store import Store
 from ..trace import Trace
 from .claims import extract_claims, select_claims
-from .evidence import assess_evidence, discarded_count, find_sources, usable
+from .evidence import (
+    assess_evidence,
+    discarded_count,
+    find_news_sources,
+    find_sources,
+    usable,
+)
 from .ingest import ingest
 from .jury import run_jury
-from .queries import plan_queries
+from .queries import plan_searches
 
 log = logging.getLogger(__name__)
 
@@ -48,6 +58,7 @@ class Deps:
     events: EventBus
     semaphore: asyncio.Semaphore
     today: Callable[[], str] = field(default=_utc_today)
+    news: Any = None  # app.news.NewsSearch or a fake: async search_news(q); None = news off
 
 
 def _settled(label: str, confidence: int, explanation: str) -> JuryResult:
@@ -126,7 +137,7 @@ async def _run(record: CheckRecord, req: CheckRequest, deps: Deps, trace: Trace)
         return
 
     async def one(claim: ExtractedClaim) -> None:
-        result = await _check_claim(claim, extraction.language, deps, trace, emit)
+        result = await _check_claim(claim, extraction.language, req.mode, deps, trace, emit)
         record.claims.append(result)
         await deps.store.save_check(record)
 
@@ -151,19 +162,67 @@ async def _run(record: CheckRecord, req: CheckRequest, deps: Deps, trace: Trace)
         await deps.store.save_check(record)
 
 
+def wants_news(mode: SearchMode, time_sensitive: bool, deps: Deps) -> bool:
+    """News search is used when it is configured and the mode asks for it: always in News mode,
+    for recent-event claims in Auto mode, never in Web mode."""
+    if deps.news is None or mode == "web":
+        return False
+    return mode == "news" or time_sensitive
+
+
+async def gather_sources(
+    claim: ExtractedClaim, queries: list[str], news: bool, deps: Deps
+) -> tuple[list[Source], SearchRoute]:
+    """News route: news API first; if it finds fewer than news_min_sources, one web query tops
+    them up (1 Tavily call instead of 3). If the news API fails, the claim uses web search."""
+    s = deps.settings
+    if news:
+        try:
+            found = await find_news_sources(queries, deps, claim=claim.text)
+        except NewsUnavailable as e:
+            log.warning("claim %s: news search unavailable (%s); using web search", claim.id, e)
+        else:
+            if len(found) >= s.news_min_sources:
+                return found, "news"
+            try:
+                extra = await find_sources(
+                    queries[:1],
+                    deps,
+                    claim=claim.text,
+                    start_id=len(found) + 1,
+                    exclude=found,
+                    max_total=max(0, s.max_sources_per_claim - len(found)),
+                )
+            except SearchUnavailable:
+                if not found:
+                    raise
+                log.warning("claim %s: web top-up failed; using news sources only", claim.id)
+                return found, "news"
+            return found + extra, ("mixed" if found and extra else "news" if found else "web")
+    return await find_sources(queries, deps, claim=claim.text), "web"
+
+
 async def _check_claim(
-    claim: ExtractedClaim, language: str, deps: Deps, trace: Trace, emit: Callable[..., None]
+    claim: ExtractedClaim,
+    language: str,
+    mode: SearchMode,
+    deps: Deps,
+    trace: Trace,
+    emit: Callable[..., None],
 ) -> ClaimResult:
     """Steps 3-8 for one claim, in order."""
-    queries = await plan_queries(claim, deps, trace)
+    queries, time_sensitive = await plan_searches(claim, deps, trace)
     emit("queries_planned", claim_id=claim.id, queries=[q.query for q in queries])
 
-    sources = await find_sources([q.query for q in queries], deps, claim=claim.text)
+    sources, route = await gather_sources(
+        claim, [q.query for q in queries], wants_news(mode, time_sensitive, deps), deps
+    )
     emit(
         "sources_found",
         claim_id=claim.id,
         count=len(sources),
         domains=list(dict.fromkeys(x.domain for x in sources)),
+        route=route,
     )
 
     evidence = []
@@ -195,5 +254,10 @@ async def _check_claim(
         rechecked=result.rechecked,
     )
     return ClaimResult(
-        id=claim.id, text=claim.text, queries=queries, evidence=evidence, result=result
+        id=claim.id,
+        text=claim.text,
+        queries=queries,
+        evidence=evidence,
+        result=result,
+        search=route,
     )

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatPublished, organizeEvidence, reliabilityBadge } from "./evidence";
+import { formatPublished, organizeEvidence, outletCount, reliabilityBadge } from "./evidence";
 import type { Evidence, Reliability, Stance } from "../types";
 
 const ev = (id: number, stance: Stance, verified = true, reliability?: Reliability): Evidence => ({
@@ -59,5 +59,14 @@ describe("formatPublished", () => {
     expect(formatPublished(undefined)).toBeNull();
     expect(formatPublished("")).toBeNull();
     expect(formatPublished("someday")).toBeNull();
+  });
+});
+
+describe("outletCount", () => {
+  it("counts distinct sites with a verified quote that takes a side", () => {
+    const mirror = ev(2, "supports");
+    mirror.source.domain = "www.s1.org"; // same site as source 1
+    expect(outletCount([ev(1, "supports"), mirror, ev(3, "refutes"), ev(4, "irrelevant", false), ev(5, "supports", false)])).toBe(2);
+    expect(outletCount([])).toBe(0);
   });
 });

@@ -14,6 +14,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Streamin
 from .config import Settings, get_settings, startup_problems
 from .events import TERMINAL, EventBus
 from .llm import LLM
+from .news import news_from_settings
 from .pipeline import orchestrator
 from .pipeline.orchestrator import Deps
 from .ratelimit import RateLimiter, RateLimitExceeded, client_ip
@@ -101,9 +102,10 @@ def create_app(
     store: Store | None = None,
     events: EventBus | None = None,
     run_check: RunCheck | None = None,
+    news: Any = None,
 ) -> FastAPI:
     """Build the app. Tests inject fakes; production builds real clients in the lifespan."""
-    injected = any(x is not None for x in (llm, search, store, events, run_check))
+    injected = any(x is not None for x in (llm, search, store, events, run_check, news))
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -149,6 +151,7 @@ def create_app(
             store=st,
             events=app.state.events,
             semaphore=asyncio.Semaphore(s.max_concurrent_checks),
+            news=news if news is not None else news_from_settings(s, st),
         )
         app.state.run_check = run_check or orchestrator.run_check
         app.state.tasks = set()  # strong references, so running checks are not GC'd
@@ -179,6 +182,7 @@ def create_app(
             "ok": True,
             "models": {"fast": s.model_fast, "judge": s.model_judge},
             "version": os.environ.get("GIT_SHA", "dev"),
+            "news_search": request.app.state.deps.news is not None,
         }
 
     async def admit(

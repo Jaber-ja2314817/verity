@@ -12,6 +12,13 @@ Task: Write {n} web search queries to fact-check the claim.
 - Max 12 words each, in English unless the claim is about a local topic best searched in its
   own language.
 
+
+
+Also set time_sensitive: true when the claim is about a recent or ongoing event that news
+outlets would be reporting on now (an announcement, election, attack, match, market move, a
+statement someone made this week). Set it to false for settled facts (history, science,
+geography, definitions, long-standing statistics).
+
 <claim>
 {claim}
 </claim>

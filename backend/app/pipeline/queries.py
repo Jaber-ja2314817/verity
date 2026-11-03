@@ -10,6 +10,14 @@ if TYPE_CHECKING:
 
 async def plan_queries(claim: ExtractedClaim, deps: "Deps", trace: Trace) -> list[PlannedQuery]:
     """n distinct queries from FAST; padded with the claim text if it returns too few."""
+    queries, _ = await plan_searches(claim, deps, trace)
+    return queries
+
+
+async def plan_searches(
+    claim: ExtractedClaim, deps: "Deps", trace: Trace
+) -> tuple[list[PlannedQuery], bool]:
+    """plan_queries plus FAST's call on whether the claim is about a recent event."""
     n = deps.settings.queries_per_claim
     today = deps.today()
     plan = await deps.llm.structured(
@@ -32,4 +40,4 @@ async def plan_queries(claim: ExtractedClaim, deps: "Deps", trace: Trace) -> lis
     queries = queries[:n]
     if len(queries) < n and " ".join(claim.text.lower().split()) not in seen:
         queries.append(PlannedQuery(query=claim.text, intent="neutral"))
-    return queries
+    return queries, plan.time_sensitive

@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 from ..quotes import find_quote, normalize
 from ..schemas import Evidence, EvidenceAssessment, Source, SourceAssessment
-from ..search import collect_sources, normalize_url
+from ..search import _site, collect_sources, normalize_url
 from ..trace import Trace
 from .ingest import defuse, load_prompt, render, system_prompt
 
@@ -21,6 +21,7 @@ async def find_sources(
     claim: str,
     start_id: int = 1,
     exclude: list[Source] | None = None,
+    max_total: int | None = None,
 ) -> list[Source]:
     """Run queries concurrently and merge them into numbered sources for this claim, each cut
     to its passages most relevant to the claim. A failed query is skipped (logged) unless all
@@ -37,13 +38,39 @@ async def find_sources(
     return collect_sources(
         [o for o in outcomes if not isinstance(o, BaseException)],
         max_per_domain=s.max_sources_per_domain,
-        max_total=s.max_sources_per_claim,
+        max_total=max_total or s.max_sources_per_claim,
         source_chars=s.source_chars,
         claim=claim,
         start_id=start_id,
         exclude_urls={normalize_url(x.url) for x in exclude or []},
     )
 
+
+async def find_news_sources(queries: list[str], deps: "Deps", *, claim: str) -> list[Source]:
+    """Like find_sources, but through the news API (deps.news). Raises NewsUnavailable when
+    every query fails, so the caller can fall back to web search."""
+    s = deps.settings
+    queries = queries[: s.news_queries_per_claim]
+    outcomes = await asyncio.gather(
+        *(deps.news.search_news(q) for q in queries), return_exceptions=True
+    )
+    failures = [o for o in outcomes if isinstance(o, BaseException)]
+    if failures and len(failures) == len(outcomes):
+        raise failures[0]
+    for e in failures:
+        log.warning("news query failed: %r", e)
+    return collect_sources(
+        [o for o in outcomes if not isinstance(o, BaseException)],
+        max_per_domain=s.max_sources_per_domain,
+        max_total=s.max_sources_per_claim,
+        source_chars=s.source_chars,
+        claim=claim,
+    )
+
+
+def outlet_count(evidence: list[Evidence]) -> int:
+    """Distinct sites with a verified quote that takes a side (mirror copies count once)."""
+    return len({_site(e.source.domain) for e in usable(evidence)})
 
 DOUBLE_QUOTES = str.maketrans({'"': "'", "\u201c": "'", "\u201d": "'"})
 

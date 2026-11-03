@@ -33,6 +33,15 @@ class Settings(BaseSettings):
     tavily_raw_content: bool = True
     tavily_chunks_per_source: int = 3  # only sent with advanced depth (1-3)
 
+    # News search (optional; leave NEWS_PROVIDER empty to disable the Auto/News modes)
+    news_provider: Literal["", "gnews", "newsdata"] = ""
+    news_api_key: str = ""
+    news_max_results: int = 8
+    news_lookback_days: int = 30
+    news_queries_per_claim: int = 2  # news API calls per claim (free plans are small)
+    news_min_sources: int = 3  # fewer than this and one Tavily web query tops them up
+    news_fetch_pages: bool = True  # free plans return snippets only; read the article pages
+
     # Pipeline limits
     max_input_chars: int = 5000
     max_claims: int = 3
@@ -108,6 +117,8 @@ def startup_problems(s: Settings) -> list[str]:
     ]:
         if value < 1:
             problems.append(f"{name} must be at least 1 (got {value})")
+    if s.news_provider and not s.news_api_key.strip():
+        problems.append("NEWS_API_KEY is not set (NEWS_PROVIDER is set)")
     if s.trusted_proxy_hops < 0:
         problems.append(f"TRUSTED_PROXY_HOPS must be 0 or more (got {s.trusted_proxy_hops})")
     return problems

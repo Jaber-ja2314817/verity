@@ -99,3 +99,8 @@ export function formatPublished(iso: string | null | undefined): string | null {
     timeZone: "UTC",
   });
 }
+
+/** Distinct sites with a verified quote that takes a side (www. ignored, so mirrors count once). */
+export function outletCount(evidence: Evidence[]): number {
+  return new Set(evidence.filter(isUsable).map((e) => e.source.domain.replace(/^www\./, ""))).size;
+}

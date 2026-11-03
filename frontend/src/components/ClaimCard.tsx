@@ -2,6 +2,7 @@ import JuryStatus from "./JuryStatus";
 import SourceList from "./SourceList";
 import VerdictBadge from "./VerdictBadge";
 import { confidenceLevel, type JuryModels } from "../lib/claims";
+import { outletCount } from "../lib/evidence";
 import { VERDICT } from "../lib/verdict";
 import type { ClaimProgress } from "../lib/useCheck";
 import type { ClaimResult, Label, Verdict } from "../types";
@@ -84,6 +85,20 @@ export function ClaimSkeleton({ claim }: { claim: ClaimProgress }) {
   );
 }
 
+const ROUTE_LABEL = { news: "News search", mixed: "News and web search" } as const;
+
+/** Shown only when news search was used (older checks and web-only checks have nothing to add). */
+function SearchNote({ claim }: { claim: ClaimResult }) {
+  if (claim.search !== "news" && claim.search !== "mixed") return null;
+  const n = outletCount(claim.evidence);
+  return (
+    <p className="mt-3 text-xs text-muted">
+      {ROUTE_LABEL[claim.search]}
+      {n > 0 && ` · ${n} independent ${n === 1 ? "outlet" : "outlets"} with a verified quote`}
+    </p>
+  );
+}
+
 export default function ClaimCard({ claim, models }: { claim: ClaimResult; models?: JuryModels }) {
   const v = claim.result.final;
   return (
@@ -103,6 +118,7 @@ export default function ClaimCard({ claim, models }: { claim: ClaimResult; model
         {v.label === "UNVERIFIED" ? <UnverifiedNote verdict={v} /> : <ConfidenceBar value={v.confidence} label={v.label} />}
       </div>
       <p className="mt-4 leading-relaxed">{v.explanation}</p>
+      <SearchNote claim={claim} />
       <div className="mt-5">
         <JuryStatus result={claim.result} models={models} />
       </div>

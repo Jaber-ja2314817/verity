@@ -9,6 +9,12 @@ The shared steps' cost and time are counted in both modes.
 Usage (from the repo root):
   .venv/bin/python scripts/run_eval.py [--limit N] [--modes single,jury] [--concurrency 2]
       [--claims eval/claims.jsonl] [--resume eval/results/run_X.jsonl]
+      [--search web|auto|news]
+
+--search picks where sources come from: web (default, same as the hackathon version), auto
+(recent-event claims use the news API) or news (every claim). auto and news need NEWS_PROVIDER
+and NEWS_API_KEY in .env. Only a full web run updates latest.json, so the baseline the app
+shows is never replaced by a news run.
 
 eval/results/latest.json (served by the app) and latest.md are only updated by a full run of
 eval/claims.jsonl (no --limit) with at least one result; other runs write only their own
@@ -36,10 +42,11 @@ load_dotenv(ROOT / ".env")
 from app.config import Settings, startup_problems  # noqa: E402
 from app.events import EventBus  # noqa: E402
 from app.llm import LLM  # noqa: E402
-from app.pipeline.evidence import assess_evidence, find_sources, usable  # noqa: E402
+from app.news import news_from_settings  # noqa: E402
+from app.pipeline.evidence import assess_evidence, usable  # noqa: E402
 from app.pipeline.jury import run_jury  # noqa: E402
-from app.pipeline.orchestrator import Deps  # noqa: E402
-from app.pipeline.queries import plan_queries  # noqa: E402
+from app.pipeline.orchestrator import Deps, gather_sources, wants_news  # noqa: E402
+from app.pipeline.queries import plan_searches  # noqa: E402
 from app.pipeline.verdict import verdict  # noqa: E402
 from app.schemas import Evidence, ExtractedClaim, Source  # noqa: E402
 from app.search import Search  # noqa: E402
@@ -181,11 +188,13 @@ class Prepared:
     settled: tuple[str, int] | None = None  # (label, confidence) decided in code, no verdict call
 
 
-async def prepare(claim: ExtractedClaim, deps: Deps) -> Prepared:
+async def prepare(claim: ExtractedClaim, deps: Deps, search: str = "web") -> Prepared:
     trace = Trace(prices=deps.settings.prices)
     t0 = time.perf_counter()
-    queries = await plan_queries(claim, deps, trace)
-    sources = await find_sources([q.query for q in queries], deps, claim=claim.text)
+    queries, time_sensitive = await plan_searches(claim, deps, trace)
+    sources, _ = await gather_sources(
+        claim, [q.query for q in queries], wants_news(search, time_sensitive, deps), deps
+    )
     evidence: list[Evidence] = []
     settled = None
     if not sources:
@@ -233,12 +242,14 @@ async def run_mode(claim: ExtractedClaim, prep: Prepared, mode: str, deps: Deps)
     }
 
 
-async def evaluate_claim(item: dict, modes: list[str], deps: Deps) -> list[dict]:
+async def evaluate_claim(
+    item: dict, modes: list[str], deps: Deps, search: str = "web"
+) -> list[dict]:
     """Run the shared steps once, then each requested mode. Errors are recorded, not raised."""
     claim = ExtractedClaim(id=1, text=item["claim"], checkworthy=True, reason="benchmark")
     base = {"id": item["id"], "claim": item["claim"], "expected": item["label"]}
     try:
-        prep = await prepare(claim, deps)
+        prep = await prepare(claim, deps, search)
     except Exception as e:  # noqa: BLE001 - recorded per item, run continues
         return [{**base, "mode": m, "predicted": None, "correct": False,
                  "error": f"{type(e).__name__}: {str(e)[:300]}"} for m in modes]  # fmt: skip
@@ -262,6 +273,7 @@ async def run_all(
     done: set[tuple[str, str]],
     concurrency: int,
     on_record=None,
+    search: str = "web",
 ) -> list[dict]:
     """Evaluate claims concurrently, skipping (id, mode) pairs already in `done`."""
     sem = asyncio.Semaphore(concurrency)
@@ -272,7 +284,7 @@ async def run_all(
         if not pending:
             return
         async with sem:
-            for r in await evaluate_claim(item, pending, deps):
+            for r in await evaluate_claim(item, pending, deps, search):
                 records.append(r)
                 if on_record:
                     on_record(r)
@@ -365,6 +377,7 @@ def make_deps(settings: Settings) -> Deps:
         store=store,
         events=EventBus(),
         semaphore=asyncio.Semaphore(1),
+        news=news_from_settings(settings, store),
     )
 
 
@@ -375,6 +388,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--modes", default="single,jury")
     p.add_argument("--concurrency", type=int, default=2)
     p.add_argument("--resume", type=Path, default=None, help="run_*.jsonl file to continue")
+    p.add_argument("--search", choices=("web", "auto", "news"), default="web")
     args = p.parse_args(argv)
 
     if problems := arg_problems(args):
@@ -395,6 +409,8 @@ def main(argv: list[str] | None = None) -> int:
 
     settings = Settings()
     problems = startup_problems(settings)
+    if args.search != "web" and not settings.news_provider:
+        problems.append(f"--search {args.search} needs NEWS_PROVIDER and NEWS_API_KEY in .env")
     if problems:
         print("Cannot run the benchmark:\n  " + "\n  ".join(problems))
         return 1
@@ -405,7 +421,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Invalid claims file: {e}")
         return 1
     stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
-    run_file = args.resume or RESULTS_DIR / f"run_{stamp}.jsonl"
+    suffix = "" if args.search == "web" else f"_{args.search}"
+    run_file = args.resume or RESULTS_DIR / f"run_{stamp}{suffix}.jsonl"
     previous = [r for r in load_records(run_file) if not r.get("error")]  # errors are retried
     done = {(r["id"], r["mode"]) for r in previous}
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -425,6 +442,7 @@ def main(argv: list[str] | None = None) -> int:
             done=done,
             concurrency=args.concurrency,
             on_record=save,
+            search=args.search,
         )  # fmt: skip
     )
     ids = {c["id"] for c in claims}
@@ -437,7 +455,9 @@ def main(argv: list[str] | None = None) -> int:
         claims_total=len(claims),
     )
     skip = latest_skip_reason(args.claims, args.limit, summary["n"])
-    write_outputs(summary, records, RESULTS_DIR, stamp, latest=skip is None)
+    write_outputs(
+        summary, records, RESULTS_DIR, stamp, latest=skip is None and args.search == "web"
+    )
     print("\n" + render_markdown(summary))
     if skip:
         print(f"latest.json/latest.md NOT updated ({skip}); results in {stamp}.json.")

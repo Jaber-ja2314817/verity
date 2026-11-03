@@ -3,6 +3,8 @@ export type Label = "TRUE" | "FALSE" | "MISLEADING" | "UNVERIFIED";
 export type Stance = "supports" | "refutes" | "mixed" | "irrelevant";
 export type Intent = "neutral" | "support" | "refute";
 export type Reliability = "high" | "medium" | "low" | "unknown";
+export type SearchMode = "auto" | "news" | "web";
+export type SearchRoute = "web" | "news" | "mixed";
 export type CheckStatus = "queued" | "running" | "done" | "error";
 
 export interface ExtractedClaim {
@@ -59,6 +61,7 @@ export interface ClaimResult {
   queries: PlannedQuery[];
   evidence: Evidence[];
   result: JuryResult;
+  search?: SearchRoute; // where the sources came from; missing on older checks
 }
 
 export interface TraceEntry {
@@ -96,6 +99,7 @@ export interface CheckRecord {
 export interface CheckRequest {
   text?: string;
   url?: string;
+  mode?: SearchMode; // news search mode; the server ignores it when news search is off
 }
 
 export interface Example {
@@ -108,6 +112,7 @@ export interface Health {
   ok: boolean;
   models: { fast: string; judge: string };
   version: string;
+  news_search?: boolean; // the server has a news API configured (Auto / News modes)
 }
 
 // Benchmark file (eval/results/latest.json) is written in Phase 4; the shape is loose until then.
@@ -120,7 +125,7 @@ export type CheckEvent =
   | { type: "ingest_done"; chars: number; title?: string }
   | { type: "claims_found"; claims: { id: number; text: string }[]; skipped: number; language: string }
   | { type: "queries_planned"; claim_id: number; queries: string[] }
-  | { type: "sources_found"; claim_id: number; count: number; domains: string[] }
+  | { type: "sources_found"; claim_id: number; count: number; domains: string[]; route?: SearchRoute }
   | { type: "evidence_ready"; claim_id: number; verified: number; discarded: number }
   | { type: "verdicts_drafted"; claim_id: number; draft_label: Label; jury_label: Label; agreed: boolean }
   | { type: "debate_started"; claim_id: number; queries: string[] }

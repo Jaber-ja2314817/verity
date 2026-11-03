@@ -1,5 +1,6 @@
 import { useId, useState, type FormEvent } from "react";
 import { MAX_CLAIMS, phrasingHint } from "../lib/claims";
+import type { SearchMode } from "../types";
 
 export const MAX_TEXT = 5000;
 export const MIN_TEXT = 20;
@@ -42,6 +43,39 @@ const TIPS: { good: string; bad?: string; why: string }[] = [
   },
 ];
 
+const SEARCH_MODES: { value: Exclude<SearchMode, "web">; label: string; hint: string }[] = [
+  { value: "auto", label: "Auto", hint: "Recent events go to news search; settled facts go to the web." },
+  { value: "news", label: "News", hint: "Search news articles first. Best for headlines and current events." },
+];
+
+function SearchModeToggle({ value, onChange }: { value: SearchMode; onChange: (m: SearchMode) => void }) {
+  const current = SEARCH_MODES.find((m) => m.value === value) ?? SEARCH_MODES[0];
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-line px-4 py-3 sm:px-6">
+      <span id="search-mode-label" className="eyebrow text-muted">
+        Search
+      </span>
+      <div role="radiogroup" aria-labelledby="search-mode-label" className="inline-flex border border-rule/80">
+        {SEARCH_MODES.map((m) => (
+          <button
+            key={m.value}
+            type="button"
+            role="radio"
+            aria-checked={current.value === m.value}
+            onClick={() => onChange(m.value)}
+            className={`px-3 py-1 text-xs transition ${
+              current.value === m.value ? "bg-accent text-on-accent" : "text-muted hover:text-ink"
+            }`}
+          >
+            {m.label}
+          </button>
+        ))}
+      </div>
+      <span className="text-xs text-muted">{current.hint}</span>
+    </div>
+  );
+}
+
 function Tips() {
   return (
     <details className="group border-t border-line px-4 py-3 sm:px-6">
@@ -80,6 +114,10 @@ interface Props {
   error: string | null;
   onSubmit: () => void;
   autoFocus?: boolean;
+  /** Show the Auto / News toggle; only when the server has news search configured. */
+  newsAvailable?: boolean;
+  searchMode?: SearchMode;
+  onSearchModeChange?: (m: SearchMode) => void;
 }
 
 export default function InputBox(p: Props) {
@@ -135,6 +173,9 @@ export default function InputBox(p: Props) {
           </p>
         )}
       </div>
+      {p.newsAvailable && p.onSearchModeChange && (
+        <SearchModeToggle value={p.searchMode ?? "auto"} onChange={p.onSearchModeChange} />
+      )}
       <div className="flex flex-col gap-4 border-t border-line px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
         <p
           id={noteId}
